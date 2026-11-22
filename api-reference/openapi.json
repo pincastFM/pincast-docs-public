@@ -1,0 +1,846 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Placecard registry",
+    "version": "1.0.0",
+    "summary": "Register your app's cards with Placecard and record what people collect.",
+    "description": "Seven calls. Six go from your server with your app key: register a card set and its cards, record a collect, read what one person holds, link a person when they sign in to your app, move a guest's cards to them, and read a set back. The seventh, the list of apps on Pincast, is public and needs no key.\n\nAddresses: call https://api.pincast.fm/v1 with your key in the X-Pincast-Key header. The older address, https://www.pincaster.com/api/placecard/v1, and the header's older name, X-Placecard-Key, keep working: the same calls and the same answers, except that a key error at the older address names X-Placecard-Key.\n\nChecks run in this order on every call that takes a key: the key first (400 when X-Pincast-Key and X-Placecard-Key both come and differ, 401 without one, 403 for a wrong, revoked, expired or disabled one), then your key's limit (429), then the set id (400), then the Idempotency-Key when one is sent (400), then the body (400), then, for a collect for a signed in person and for a claim, that person's sign-in link (403). Every error answers with the same JSON body: see the Error schema. On a 4xx its data says what to do: a code to branch on, the field at fault when there is one, and a fix in one sentence.\n\nRetries: every call is safe to send again, and each write says how. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an Idempotency-Key header: Placecard keeps the first 200 answer to that key for 24 hours and answers a retry with it, marked Idempotent-Replayed: true, without running the call again.\n\nSign-in: when a person signs in to your app through id.pincast.fm, send their ID token to POST /people once. Placecard checks it with id.pincast.fm and links the person to your app. From then on your key can record collects (actor.source logto) and claims (to) for that person, and for nobody who has not signed in to your app: those calls answer 403. Guest collects need no link, and a guest token is never a person's id: a guest collect for an id that holds cards in your app as a signed-in person answers 409. Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile.\n\nLimits: each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. Past it, a call answers 429 with a Retry-After header, the seconds to wait. A refused call does not count, so the call sent after the wait goes through. Placecard logs each call made with your key (its time, method, path without the query string, key and answer, never the body) and keeps the log 90 days. The list of apps has no limit of its own and logs nothing: its answer is the same for everyone, and the edge keeps it 5 minutes.\n\nThis file describes the registry as it runs today. The tests in tests/placecardApiV1.test.js send every example here to the real handlers and fail when an answer and this file disagree."
+  },
+  "servers": [
+    {
+      "url": "https://api.pincast.fm/v1",
+      "description": "Production: the Pincast address for the card registry. Send your key in X-Pincast-Key."
+    },
+    {
+      "url": "https://www.pincaster.com/api/placecard/v1",
+      "description": "Production, the older address, kept working: the same calls and answers, and a key error here names X-Placecard-Key. Use api.pincast.fm for new work."
+    }
+  ],
+  "security": [
+    { "pincastKey": [] }
+  ],
+  "tags": [
+    { "name": "Sets", "description": "Card sets and their cards." },
+    { "name": "Collects", "description": "What people collect, and what they hold." },
+    { "name": "Claims", "description": "A guest's cards, moved to them when they sign in." },
+    { "name": "People", "description": "The people who signed in to your app." },
+    { "name": "Apps", "description": "The apps listed on Pincast." }
+  ],
+  "paths": {
+    "/sets/{set}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Set" }
+      ],
+      "put": {
+        "operationId": "putSet",
+        "tags": ["Sets"],
+        "summary": "Register a card set, or update it and its cards",
+        "description": "Creates the set the first time and updates its name and meta after that. Cards are matched by key: a new key adds a card, a known key updates it, and a card you leave out of the call is kept as it is (send it with status retired to retire it). A card's parent may be in the same call or already registered. The whole call is one transaction: one bad card fails the call and nothing is written. Safe to send again: an unchanged card counts as unchanged and is not touched. With an Idempotency-Key, a retry answers the first answer (setCreated true, the first counts) and writes nothing.",
+        "security": [{ "pincastKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PutSetRequest" },
+              "examples": {
+                "story": {
+                  "summary": "A set of park trees: one species card and one tree card that belongs to it",
+                  "value": {
+                    "name": "Central Park Trees",
+                    "meta": { "city": "New York" },
+                    "cards": [
+                      {
+                        "key": "species:ginkgo",
+                        "type": "species",
+                        "title": "Ginkgo",
+                        "subtitle": "Ginkgo biloba",
+                        "fact": "21,024 in New York",
+                        "rarity": "common",
+                        "image": {
+                          "url": "https://images.example.org/ginkgo.jpg",
+                          "credit": "A. Photographer",
+                          "license": "CC BY-SA 4.0"
+                        },
+                        "data": { "count": 21024 }
+                      },
+                      {
+                        "key": "tree:2614648",
+                        "type": "tree",
+                        "parent": "species:ginkgo",
+                        "title": "Ginkgo on East Drive",
+                        "url": "https://app.example.org/tree/2614648",
+                        "lat": 40.77945,
+                        "lng": -73.96318
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The set is registered. The counts say what this call changed; active counts the set's active cards by type after it.",
+            "headers": {
+              "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PutSetResponse" },
+                "examples": {
+                  "story": {
+                    "value": {
+                      "app": "demo",
+                      "set": "central-park-trees",
+                      "name": "Central Park Trees",
+                      "setCreated": true,
+                      "cards": { "created": 2, "updated": 0, "unchanged": 0, "parentsSet": 1 },
+                      "active": { "species": 1, "tree": 1 }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The set id or the body breaks a rule. Messages: Invalid set id; Invalid Idempotency-Key; JSON body required; name required (120 characters at most); meta must be an object under 8000 characters; meta.checkout must be a Pincast checkout path; cards must be an array; At most 5000 cards per call; cards[i]: followed by the card's rule; Duplicate card keys in one call; Parent cards not registered: followed by up to five keys.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": { "$ref": "#/components/responses/KeyRefused" },
+          "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "get": {
+        "operationId": "getSet",
+        "tags": ["Sets"],
+        "summary": "Read a set back",
+        "description": "The set as Placecard holds it: its name and meta, its active cards by type, how many collects it has and how many people made them, and whether it lists. An app reads only its own sets.",
+        "security": [{ "pincastKey": [] }],
+        "responses": {
+          "200": {
+            "description": "The set.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SetResponse" },
+                "examples": {
+                  "story": {
+                    "value": {
+                      "app": "demo",
+                      "set": "central-park-trees",
+                      "name": "Central Park Trees",
+                      "meta": { "city": "New York" },
+                      "updatedAt": "2026-11-14T15:00:00.000Z",
+                      "active": { "species": 1, "tree": 1 },
+                      "collects": 1,
+                      "players": 1,
+                      "listing": { "listed": true, "reason": null }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Message: Invalid set id.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": { "$ref": "#/components/responses/KeyRefused" },
+          "404": { "$ref": "#/components/responses/SetMissing" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/sets/{set}/collects": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Set" }
+      ],
+      "post": {
+        "operationId": "postCollect",
+        "tags": ["Collects"],
+        "summary": "Record that a person collected a card",
+        "description": "Send the card's key, or the whole card to register or update it first. The actor is the person as your app knows them: a Logto id once they have signed in and your app has sent their sign-in token with POST /people, or your app's guest token for this device before that. The card's parent (a tree card's species card) is held through it and recorded with it.\n\nSafe to send again until you hear back: a collect with the same card, actor and time changes nothing and answers as the first send did, first included. A later time counts one more collect; an earlier time moves the first collect back. A collect sent without at takes Placecard's clock, so each send of it is a new time: send it with an Idempotency-Key to retry it safely.",
+        "security": [{ "pincastKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CollectRequest" },
+              "examples": {
+                "story": {
+                  "summary": "A guest collects the tree card at the tree",
+                  "value": {
+                    "card": "tree:2614648",
+                    "actor": { "id": "guest-7f3c9a2e5b41", "source": "anonymous" },
+                    "at": "2026-11-14T15:04:05Z",
+                    "lat": 40.77951,
+                    "lng": -73.96311,
+                    "accuracy": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The collect is recorded. first is true when this collect's time is this person's first hold of the card: on their first collect, on a resend of it, and on a collect dated before their first. count is how many times they collected it directly.",
+            "headers": {
+              "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectResponse" },
+                "examples": {
+                  "story": {
+                    "value": {
+                      "collected": true,
+                      "first": true,
+                      "count": 1,
+                      "collectedAt": "2026-11-14T15:04:05.000Z",
+                      "card": { "key": "tree:2614648", "type": "tree" },
+                      "parent": { "key": "species:ginkgo", "first": true }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The set id or the body breaks a rule. Messages: Invalid set id; Invalid Idempotency-Key; JSON body required; actor required; actor.id required; actor.source is logto or anonymous; at must be an ISO time, not in the future; lat and lng go together, as numbers; accuracy must be metres; card required (a key, or a card); card: followed by the card's rule, when a whole card is sent.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": { "$ref": "#/components/responses/WriteRefused" },
+          "404": {
+            "description": "The set or the card is not registered. Messages: Set <id> is not registered; Card <key> is not registered.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "409": {
+            "description": "The card is retired and takes no new collects. People who hold it keep it. Message: Card <key> is retired. Or the collect is a guest's (actor.source anonymous) for an id that holds cards in your app as a signed-in person: a guest write never lands on a person's cards. Message: Actor holds cards as a signed-in person.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      },
+      "get": {
+        "operationId": "getCollects",
+        "tags": ["Collects"],
+        "summary": "Read what a person holds in this set",
+        "description": "One person's cards in this set, first collect first (cards collected at the same moment in key order). Send up to three actor ids for the same person, a Logto id with this device's guest token for example: a card held under more than one is listed once, at its earliest collect. A guest's cards that have been claimed are listed under the person who claimed them.",
+        "security": [{ "pincastKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/Actor" }
+        ],
+        "responses": {
+          "200": {
+            "description": "The cards this person holds. held counts them by type. A parent card held only through one of its children has count 0 and names that child in via.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CollectsResponse" },
+                "examples": {
+                  "story": {
+                    "value": {
+                      "app": "demo",
+                      "set": "central-park-trees",
+                      "held": { "species": 1, "tree": 1 },
+                      "cards": [
+                        {
+                          "key": "species:ginkgo",
+                          "type": "species",
+                          "parent": null,
+                          "via": "tree:2614648",
+                          "collectedAt": "2026-11-14T15:04:05.000Z",
+                          "lastCollectedAt": "2026-11-14T15:04:05.000Z",
+                          "count": 0,
+                          "source": "anonymous"
+                        },
+                        {
+                          "key": "tree:2614648",
+                          "type": "tree",
+                          "parent": "species:ginkgo",
+                          "via": null,
+                          "collectedAt": "2026-11-14T15:04:05.000Z",
+                          "lastCollectedAt": "2026-11-14T15:04:05.000Z",
+                          "count": 1,
+                          "source": "anonymous"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Messages: Invalid set id; actor required; At most three actor ids (also sent when an id is longer than 255 characters).",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": { "$ref": "#/components/responses/KeyRefused" },
+          "404": { "$ref": "#/components/responses/SetMissing" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/sets/{set}/claims": {
+      "parameters": [
+        { "$ref": "#/components/parameters/Set" }
+      ],
+      "post": {
+        "operationId": "postClaim",
+        "tags": ["Claims"],
+        "summary": "Move a guest's cards to the person who just signed in",
+        "description": "Your app vouches for both ids: it has signed the person in (to) and sent their sign-in token with POST /people, and it read this device's guest token itself (from), never from what the person sent. Only cards collected as a guest move. A card the person already holds is merged into theirs (the earlier first collect, the later last collect, the counts added) and the guest's copy is kept, marked as claimed.\n\nSafe to send again until you hear back: a claim with nothing left to move answers claimed 0. With an Idempotency-Key, a retry answers the first answer instead (claimed 2, say).",
+        "security": [{ "pincastKey": [] }],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClaimRequest" },
+              "examples": {
+                "story": {
+                  "summary": "The guest signs in, and their two cards move to them",
+                  "value": { "from": "guest-7f3c9a2e5b41", "to": "q8n2v5x7c1z4" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The claim is done. moved counts cards that moved; merged counts cards the person already held; claimed is the two added.",
+            "headers": {
+              "Idempotent-Replayed": { "$ref": "#/components/headers/IdempotentReplayed" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ClaimResponse" },
+                "examples": {
+                  "story": {
+                    "value": { "app": "demo", "set": "central-park-trees", "claimed": 2, "moved": 2, "merged": 0 }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Messages: Invalid set id; Invalid Idempotency-Key; JSON body required; from required; to required; from and to are the same player.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": { "$ref": "#/components/responses/WriteRefused" },
+          "404": { "$ref": "#/components/responses/SetMissing" },
+          "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/people": {
+      "post": {
+        "operationId": "postPerson",
+        "tags": ["People"],
+        "summary": "Link a person who signed in to your app",
+        "description": "Send the person's ID token, exactly as id.pincast.fm gave it to your app when they signed in. Placecard checks its signature against id.pincast.fm's public keys, its issuer, its times, and that it was made for one of your app's sign-in clients (Pincast adds your id.pincast.fm application id when it gives you your key). Then it links the person (the token's subject) to your app, and your key can record collects and claims for them.\n\nSafe to send again: a token for a person already linked answers the same link. Send it at each sign-in if that is simpler for your app.",
+        "security": [{ "pincastKey": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PersonRequest" },
+              "examples": {
+                "story": {
+                  "summary": "The guest signs in, and your app sends their sign-in token",
+                  "value": { "token": "eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCIsImtpZCI6InN0b3J5LWtleSJ9.eyJpc3MiOiJodHRwczovL2lkLnBpbmNhc3QuZm0vb2lkYyIsInN1YiI6InE4bjJ2NXg3YzF6NCIsImF1ZCI6ImRlbW9hcHBzaWduaW4wY2xpZW50MSIsImV4cCI6NDA3MDkwODgwMCwiaWF0IjoxNzk0NjY5MDAwfQ.868gLKGOj3abQ4a2LfkoSd5LOEBwhTVrXZxHz9UKfaJPeidE3zIvbZIqNHRv4zytmC3xqxpxswUC1KP0IdeFDpB32uTi8JQXUHsqgtuK1OVU3blC0Ki8xCCkAqpsUHty" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The person is linked to your app. linkedAt is when the link was first made, so a resend answers the same.",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PersonResponse" },
+                "examples": { "story": { "value": { "app": "demo", "person": "q8n2v5x7c1z4", "linkedAt": "2026-11-14T15:10:01.000Z" } } }
+              }
+            }
+          },
+          "400": {
+            "description": "The body or the token breaks a rule. Messages: JSON body required; token required; Invalid sign-in token, when it is not a token id.pincast.fm signed for your app (its data.fix says which check failed); Sign-in token expired, when its exp has passed: send a fresh one.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "401": { "$ref": "#/components/responses/KeyMissing" },
+          "403": {
+            "description": "The key is refused, or the token was made for another app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Sign-in token is for another app, when its audience names none of your app's sign-in clients.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/SignInCheckUnavailable" },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    },
+    "/apps": {
+      "get": {
+        "operationId": "getApps",
+        "tags": ["Apps"],
+        "summary": "List the apps on Pincast",
+        "description": "Every app Pincast lists, with cards on Placecard or without: the featured app first while its slot runs, then every app by name. An app joins the list once Pincast has reviewed it, and leaves it when Pincast hides it or disables it. Pincast sets each app's description, icon, category, color and featured slot at the review.\n\nPublic: no key needed, and a key sent is ignored (never checked, counted or logged), so a web page may call it too. The answer is the same for everyone: the edge keeps it 5 minutes, and may give a copy up to a day old while it fetches a fresh one. Every text field is plain text: escape it before you put it in a page.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "The listed apps.",
+            "headers": {
+              "Cache-Control": { "$ref": "#/components/headers/AppsCacheControl" },
+              "Access-Control-Allow-Origin": { "$ref": "#/components/headers/AnyOrigin" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AppsResponse" },
+                "examples": {
+                  "directory": {
+                    "summary": "Three listed apps: the featured one first, then the rest by name. Demo shows the story's set: its species card counts, and the tree under it is a place.",
+                    "value": { "apps": [
+                    {"id": "skywatch", "name": "Sky Watch", "description": "The birds of your city's parks, one card for each kind you spot.", "url": "https://skywatch.example", "icon": "https://skywatch.example/icon.png", "color": "#2f6f4f", "category": "nature", "featured": {"note": "New on Pincast", "until": null}, "cardApp": true, "cardCount": 3},
+                    {"id": "demo", "name": "Demo", "description": "The trees of Central Park, one card for each species.", "url": "https://demo.example", "icon": null, "color": "#3b5bdb", "category": "nature", "featured": null, "cardApp": true, "cardCount": 1},
+                    {"id": "nightowl", "name": "Night Owl", "description": "Late shows and open kitchens near you, after ten.", "url": "https://nightowl.example", "icon": "https://nightowl.example/icon.png", "color": null, "category": "food", "featured": null, "cardApp": false, "cardCount": 0}
+                    ] }
+                  }
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/ServerError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "pincastKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Pincast-Key",
+        "description": "Your app's key, sent on every call from your server only. It reads pck_, your app id, an underscore, then a secret of 20 or more letters, digits, underscores or hyphens. Never put it in a web page, an app bundle or a query string. Placecard stores only its sha256.\n\nYour app can hold two live keys at once, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry (seven days after the new key is made, unless you ask for less). A revoked key is refused from the next call.\n\nX-Placecard-Key, the older name of this header, is taken too, at either address. Send one of the two; if both come and they differ, the call answers 400 key_conflict."
+      }
+    },
+    "parameters": {
+      "Set": {
+        "name": "set",
+        "in": "path",
+        "required": true,
+        "description": "Your set's id, chosen by your app.",
+        "schema": { "$ref": "#/components/schemas/SetId" },
+        "examples": { "story": { "value": "central-park-trees" } }
+      },
+      "Actor": {
+        "name": "actor",
+        "in": "query",
+        "required": true,
+        "description": "The person's id as your app sends it in collects. Repeat the parameter for up to three ids of the same person.",
+        "style": "form",
+        "explode": true,
+        "schema": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "items": { "type": "string", "minLength": 1, "maxLength": 255 }
+        },
+        "examples": { "story": { "value": ["guest-7f3c9a2e5b41"] } }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Optional, on the three writes. A string your app makes for one request, a UUID for example, and sends again unchanged with each retry of that request. Placecard keeps the first 200 answer to it for 24 hours, for your app only. A retry with the same key and the same request (method, path and body; the order of keys in the body does not matter) answers that answer again, marked Idempotent-Replayed: true, and runs nothing. The same key with a different request answers 422. A refused call keeps nothing, so its retry runs again.",
+        "schema": { "type": "string", "pattern": "^[\\x21-\\x7E]{1,255}$", "description": "1 to 255 visible ASCII characters, with no spaces." },
+        "examples": { "retry": { "value": "5f0c2a9e-7d41-4b8e-a3c6-1e9d2b7f4a60" } }
+      }
+    },
+    "headers": {
+      "IdempotentReplayed": {
+        "description": "true when this answer is the kept answer to your Idempotency-Key, given again. Not sent otherwise.",
+        "schema": { "type": "string", "const": "true" }
+      },
+      "RetryAfter": {
+        "description": "The seconds to wait before you send the call again, from 1 to 60.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 60 }
+      },
+      "AppsCacheControl": {
+        "description": "The edge keeps the list 5 minutes, and may give a copy up to a day old while it fetches a fresh one.",
+        "schema": { "type": "string", "const": "public, s-maxage=300, stale-while-revalidate=86400" }
+      },
+      "AnyOrigin": {
+        "description": "Any web page may read the list.",
+        "schema": { "type": "string", "const": "*" }
+      }
+    },
+    "responses": {
+      "KeyMissing": {
+        "description": "No key was sent. Message: X-Pincast-Key required (X-Placecard-Key required at the older address).",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "KeyRefused": {
+        "description": "The key is refused. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SetMissing": {
+        "description": "Your app has no set with this id. Message: Set <id> is not registered.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "IdempotencyKeyReused": {
+        "description": "Your app already used this Idempotency-Key, in the last 24 hours, for a different request. Message: Idempotency-Key already used for a different request.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "RateLimited": {
+        "description": "Your key made as many calls in the last 60 seconds as its limit allows: 600 unless Pincast gave it a limit of its own. Message: Too many requests. Wait the seconds in Retry-After, then send the call again; a refused call does not count.",
+        "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "WriteRefused": {
+        "description": "The key is refused, or the person is not signed in to your app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Person not signed in to this app, when the call is for a signed in person your app has not sent a sign-in token for: send it with POST /people, then send this call again.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "SignInCheckUnavailable": {
+        "description": "Placecard could not reach id.pincast.fm to check the token, or the token names a key Placecard has not seen yet: id.pincast.fm's keys are checked again at most once a minute, so a key it just started using works within a minute. Message: Sign-in check unavailable. Wait the seconds in Retry-After, then send the same call again.",
+        "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      },
+      "ServerError": {
+        "description": "Something failed on Placecard's side. Message: internal server error. Safe to send the same call again later.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "The body of every error. message says what was wrong, for a person to read; statusCode repeats the HTTP status; data, on every 4xx and on a 503, says what to do.",
+        "required": ["url", "statusCode", "statusMessage", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "description": "The path that was called." },
+          "statusCode": { "type": "integer", "minimum": 400, "maximum": 599 },
+          "statusMessage": { "type": "string", "description": "Empty, or Not Found on a 404." },
+          "message": { "type": "string" },
+          "stack": { "type": "string", "description": "Always empty in production." },
+          "data": { "$ref": "#/components/schemas/ErrorData" }
+        }
+      },
+      "ErrorData": {
+        "type": "object",
+        "description": "What to do about a 4xx or a 503. Branch on code: it stays the same from release to release, while message and fix are for people and may be worded better later.",
+        "required": ["code", "fix"],
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["key_missing", "key_invalid", "key_expired", "key_conflict", "rate_limited", "set_id_invalid", "idempotency_key_invalid", "body_not_json", "field_required", "field_invalid", "too_many_cards", "duplicate_card_key", "parent_not_registered", "too_many_actors", "same_player", "set_not_registered", "card_not_registered", "card_retired", "actor_signed_in", "idempotency_key_reused", "token_invalid", "token_expired", "token_other_app", "person_not_signed_in", "signin_check_unavailable"],
+            "description": "Each code with the status it comes with: key_missing 401, key_invalid 403, key_expired 403, key_conflict 400, rate_limited 429, set_id_invalid 400, idempotency_key_invalid 400, body_not_json 400, field_required 400, field_invalid 400, too_many_cards 400, duplicate_card_key 400, parent_not_registered 400, too_many_actors 400, same_player 400, set_not_registered 404, card_not_registered 404, card_retired 409, actor_signed_in 409, idempotency_key_reused 422, token_invalid 400, token_expired 400, token_other_app 403, person_not_signed_in 403, signin_check_unavailable 503. field_required is a field left out or blank; field_invalid is one sent with the wrong type, shape, length or range. key_conflict is a call that sent X-Pincast-Key and X-Placecard-Key with different keys."
+          },
+          "field": { "type": "string", "description": "Where the fault is: a body field's path (name, meta.checkout, cards[3].key, card.title, actor.id, to, token), the set path parameter (set), the actor query parameter (actor), or a header (X-Pincast-Key at api.pincast.fm, X-Placecard-Key at the older address, Idempotency-Key). Left out when no one field is at fault." },
+          "fix": { "type": "string", "minLength": 1, "description": "What to send instead, in one sentence." }
+        }
+      },
+      "SetId": {
+        "type": "string",
+        "description": "Lowercase letters, digits, underscores and hyphens, starting with a letter or digit, 64 characters at most.",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+      },
+      "CardKey": {
+        "type": "string",
+        "description": "Your app's own id for the card, unique in the set: letters, digits and : _ . or hyphen, starting with a letter or digit, 128 characters at most.",
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9:_.-]{0,127}$"
+      },
+      "CardType": {
+        "type": "string",
+        "description": "Your app's own word for the kind of card (species, tree): a lowercase word of 32 characters at most.",
+        "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+      },
+      "Time": {
+        "type": "string",
+        "format": "date-time",
+        "description": "An ISO 8601 time."
+      },
+      "TypeCounts": {
+        "type": "object",
+        "description": "A count for each card type.",
+        "propertyNames": { "$ref": "#/components/schemas/CardType" },
+        "additionalProperties": { "type": "integer", "minimum": 1 }
+      },
+      "Card": {
+        "type": "object",
+        "description": "One card as your app sends it. An empty string or null counts as left out. The server ignores fields not listed here.",
+        "required": ["key", "type", "title"],
+        "additionalProperties": false,
+        "dependentRequired": { "lat": ["lng"], "lng": ["lat"] },
+        "properties": {
+          "key": { "$ref": "#/components/schemas/CardKey" },
+          "type": { "$ref": "#/components/schemas/CardType" },
+          "parent": {
+            "$ref": "#/components/schemas/CardKey",
+            "description": "The key of the card this one belongs to (a tree card's species card). It must be in the same call or already registered, and is never the card itself."
+          },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "subtitle": { "type": "string", "maxLength": 200 },
+          "fact": { "type": "string", "maxLength": 300 },
+          "rarity": { "type": "string", "maxLength": 32, "description": "Your app's own word, printed as given." },
+          "foil": { "type": "boolean", "description": "Only true makes a foil card." },
+          "image": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "url": { "type": "string", "maxLength": 1000, "pattern": "^https?://" },
+              "credit": { "type": "string", "maxLength": 300 },
+              "license": { "type": "string", "maxLength": 100 }
+            }
+          },
+          "url": { "type": "string", "maxLength": 1000, "pattern": "^https?://", "description": "Where your app plays this card." },
+          "lat": { "type": "number", "minimum": -90, "maximum": 90, "description": "Sent with lng. A numeric string is also accepted." },
+          "lng": { "type": "number", "minimum": -180, "maximum": 180, "description": "Sent with lat. A numeric string is also accepted." },
+          "data": { "type": "object", "description": "Anything else your card's face needs, under 8000 characters as JSON." },
+          "status": { "type": "string", "enum": ["active", "retired"], "default": "active", "description": "A retired card stays with the people who hold it and takes no new collects." }
+        }
+      },
+      "PutSetRequest": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 120, "description": "Trimmed before the check." },
+          "meta": { "type": "object", "description": "Anything about the set your app wants kept, under 8000 characters as JSON. Two keys matter to every app: listed (false keeps the set off the map, the front page and card pages for people who do not hold its cards) and checkout (refused with field_invalid unless it is one of Pincast's own checkout paths for your app; selling through Pincast's checkout comes later)." },
+          "cards": { "type": "array", "maxItems": 5000, "items": { "$ref": "#/components/schemas/Card" } }
+        }
+      },
+      "PutSetResponse": {
+        "type": "object",
+        "required": ["app", "set", "name", "setCreated", "cards", "active"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string", "description": "Your app's id." },
+          "set": { "$ref": "#/components/schemas/SetId" },
+          "name": { "type": "string" },
+          "setCreated": { "type": "boolean", "description": "True when this call created the set." },
+          "cards": {
+            "type": "object",
+            "required": ["created", "updated", "unchanged", "parentsSet"],
+            "additionalProperties": false,
+            "properties": {
+              "created": { "type": "integer", "minimum": 0 },
+              "updated": { "type": "integer", "minimum": 0 },
+              "unchanged": { "type": "integer", "minimum": 0 },
+              "parentsSet": { "type": "integer", "minimum": 0, "description": "Cards whose parent this call set or changed." }
+            }
+          },
+          "active": { "$ref": "#/components/schemas/TypeCounts" }
+        }
+      },
+      "SetResponse": {
+        "type": "object",
+        "required": ["app", "set", "name", "meta", "updatedAt", "active", "collects", "players", "listing"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string" },
+          "set": { "$ref": "#/components/schemas/SetId" },
+          "name": { "type": "string" },
+          "meta": { "type": "object" },
+          "updatedAt": { "$ref": "#/components/schemas/Time" },
+          "active": { "$ref": "#/components/schemas/TypeCounts" },
+          "collects": { "type": "integer", "minimum": 0, "description": "Cards collected directly, one per person and card." },
+          "players": { "type": "integer", "minimum": 0, "description": "People who collected at least one card." },
+          "listing": {
+            "type": "object",
+            "description": "Whether the set lists: on the Placecard map, the front page and card pages for people who do not hold its cards. A new app's sets list once Pincast has reviewed the app.",
+            "required": ["listed", "reason"],
+            "additionalProperties": false,
+            "properties": {
+              "listed": { "type": "boolean" },
+              "reason": {
+                "type": ["string", "null"],
+                "enum": ["app_not_reviewed", "app_hidden", "set_hidden", "set_off", null],
+                "description": "Null when the set lists, otherwise the first reason it does not: app_not_reviewed (Pincast has not reviewed your app yet), app_hidden or set_hidden (Pincast took your app or this set off the lists; ask us why), set_off (your own meta.listed is false). People keep the cards they hold either way, and your key keeps writing."
+              }
+            }
+          }
+        }
+      },
+      "Actor": {
+        "type": "object",
+        "required": ["id", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "A Logto id, or your app's guest token for this device. Trimmed before the check." },
+          "source": { "type": "string", "enum": ["logto", "anonymous"], "description": "logto for a signed in person, once your app has sent their sign-in token with POST /people; anonymous for a guest token, never a person's id (409 actor_signed_in for an id that holds cards in your app as a signed-in person)." }
+        }
+      },
+      "CollectRequest": {
+        "type": "object",
+        "required": ["card", "actor"],
+        "additionalProperties": false,
+        "dependentRequired": { "lat": ["lng"], "lng": ["lat"] },
+        "properties": {
+          "card": {
+            "description": "The card's key, or the whole card to register or update it first.",
+            "oneOf": [
+              { "$ref": "#/components/schemas/CardKey" },
+              { "$ref": "#/components/schemas/Card" }
+            ]
+          },
+          "actor": { "$ref": "#/components/schemas/Actor" },
+          "at": { "$ref": "#/components/schemas/Time", "description": "When it was collected, on your app's clock. Not more than five minutes ahead of Placecard's clock, and not before 2015. Leave it out for now." },
+          "lat": { "type": "number", "minimum": -90, "maximum": 90, "description": "Where it was collected. Sent with lng." },
+          "lng": { "type": "number", "minimum": -180, "maximum": 180, "description": "Sent with lat." },
+          "accuracy": { "type": "number", "minimum": 0, "description": "How sure the place is, in metres." }
+        }
+      },
+      "CollectResponse": {
+        "type": "object",
+        "required": ["collected", "first", "count", "collectedAt", "card", "parent"],
+        "additionalProperties": false,
+        "properties": {
+          "collected": { "const": true },
+          "first": { "type": "boolean", "description": "True when this collect's time is this person's first hold of the card, so a resend answers as the first send did." },
+          "count": { "type": "integer", "minimum": 1, "description": "How many times this person collected the card directly." },
+          "collectedAt": { "$ref": "#/components/schemas/Time", "description": "This person's first collect of the card." },
+          "card": {
+            "type": "object",
+            "required": ["key", "type"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "#/components/schemas/CardKey" },
+              "type": { "$ref": "#/components/schemas/CardType" }
+            }
+          },
+          "parent": {
+            "type": ["object", "null"],
+            "description": "The parent card, held through this one; null when the card has none.",
+            "required": ["key", "first"],
+            "additionalProperties": false,
+            "properties": {
+              "key": { "$ref": "#/components/schemas/CardKey" },
+              "first": { "type": "boolean", "description": "True when this collect is this person's first hold of the parent: its time is their first hold of the parent, and through this card." }
+            }
+          }
+        }
+      },
+      "HeldCard": {
+        "type": "object",
+        "required": ["key", "type", "parent", "via", "collectedAt", "lastCollectedAt", "count", "source"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "$ref": "#/components/schemas/CardKey" },
+          "type": { "$ref": "#/components/schemas/CardType" },
+          "parent": { "type": ["string", "null"], "description": "The key of the card this one belongs to." },
+          "via": { "type": ["string", "null"], "description": "The child card this one was first held through, when it was." },
+          "collectedAt": { "$ref": "#/components/schemas/Time" },
+          "lastCollectedAt": { "$ref": "#/components/schemas/Time" },
+          "count": { "type": "integer", "minimum": 0, "description": "Direct collects; 0 when held only through a child card." },
+          "source": { "type": "string", "enum": ["logto", "anonymous"] }
+        }
+      },
+      "CollectsResponse": {
+        "type": "object",
+        "required": ["app", "set", "held", "cards"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string" },
+          "set": { "$ref": "#/components/schemas/SetId" },
+          "held": { "$ref": "#/components/schemas/TypeCounts" },
+          "cards": { "type": "array", "items": { "$ref": "#/components/schemas/HeldCard" } }
+        }
+      },
+      "ClaimRequest": {
+        "type": "object",
+        "required": ["from", "to"],
+        "additionalProperties": false,
+        "properties": {
+          "from": { "type": "string", "minLength": 1, "maxLength": 255, "description": "This device's guest token, as your app read it." },
+          "to": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The Logto id of the person who just signed in, once your app has sent their sign-in token with POST /people. Never the same as from." }
+        }
+      },
+      "ClaimResponse": {
+        "type": "object",
+        "required": ["app", "set", "claimed", "moved", "merged"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string" },
+          "set": { "$ref": "#/components/schemas/SetId" },
+          "claimed": { "type": "integer", "minimum": 0 },
+          "moved": { "type": "integer", "minimum": 0 },
+          "merged": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "PersonRequest": {
+        "type": "object",
+        "required": ["token"],
+        "additionalProperties": false,
+        "properties": {
+          "token": { "type": "string", "minLength": 1, "maxLength": 8192, "description": "The person's ID token from id.pincast.fm, a JWT, exactly as your app received it at sign-in." }
+        }
+      },
+      "PersonResponse": {
+        "type": "object",
+        "required": ["app", "person", "linkedAt"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string" },
+          "person": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The person's Logto id, the token's subject: send it as actor.id and as to." },
+          "linkedAt": { "$ref": "#/components/schemas/Time" }
+        }
+      },
+      "AppsResponse": {
+        "type": "object",
+        "required": ["apps"],
+        "additionalProperties": false,
+        "properties": {
+          "apps": { "type": "array", "items": { "$ref": "#/components/schemas/App" }, "description": "The featured app first while its slot runs, then every app by name." }
+        }
+      },
+      "App": {
+        "type": "object",
+        "required": ["id", "name", "description", "url", "icon", "color", "category", "featured", "cardApp", "cardCount"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9-]{1,32}$", "description": "The app's id: the one in its key, and app on every set and card." },
+          "name": { "type": "string", "minLength": 1, "maxLength": 80 },
+          "description": { "type": ["string", "null"], "minLength": 1, "maxLength": 200, "description": "What the app is, in a sentence or two of plain text. Null when it has none yet." },
+          "url": { "type": ["string", "null"], "pattern": "^https://", "description": "The app's home page, always https. Null when it has none." },
+          "icon": { "type": ["string", "null"], "pattern": "^https://\\S+$", "maxLength": 1000, "description": "The address of the app's icon, always https. Null when it has none." },
+          "color": { "type": ["string", "null"], "pattern": "^#[0-9a-fA-F]{6}$", "description": "The app's color as #rrggbb, for its chips, pins and marks. Null when it has none." },
+          "category": { "type": ["string", "null"], "enum": ["walks", "nature", "history", "art", "food", "games", "making", null], "description": "What kind of app it is, one of a short list Pincast keeps. The list may grow. Null when it has none yet." },
+          "featured": {
+            "type": ["object", "null"],
+            "required": ["note", "until"],
+            "additionalProperties": false,
+            "description": "Set on the featured app while its slot runs, null on every other app. One app at a time.",
+            "properties": {
+              "note": { "type": ["string", "null"], "minLength": 1, "maxLength": 200, "description": "A line on why the app is featured, or null." },
+              "until": { "type": ["string", "null"], "format": "date-time", "description": "When the slot ends, or null when Pincast ends it by hand." }
+            }
+          },
+          "cardApp": { "type": "boolean", "description": "true when the app has cards on Placecard: a listed set with one card or more." },
+          "cardCount": { "type": "integer", "minimum": 0, "description": "The cards in the app's listed sets that Placecard shows as cards: active ones that show on their own: not an experience (a walk, say), not a place (a tree), and with no parent or an experience for a parent." }
+        }
+      }
+    }
+  }
+}

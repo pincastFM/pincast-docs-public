@@ -1,0 +1,70 @@
+---
+title: "Overview"
+description: "The address, your key, the order of checks, retries and limits for every Placecard call."
+---
+
+The Placecard registry takes seven calls. Six go from your server with your app's key. The seventh, the list of apps on Pincast, is public and needs no key. Each call has its own page in this section, with a request and a response to copy. They're generated from the registry's API description, an OpenAPI 3.1 file that the registry's own tests check against the code, so the pages change when the code does.
+
+## Address and key
+
+Call `https://api.pincast.fm/v1` with your key in the `X-Pincast-Key` header:
+
+```bash
+curl https://api.pincast.fm/v1/sets/central-park-trees \
+  -H "X-Pincast-Key: $PINCAST_KEY"
+```
+
+A key reads `pck_`, your app id, `_`, then a secret of 20 or more characters, each a letter, a digit, `_` or `-`. Keep it on your server: never in a web page, an app bundle or a query string. Placecard stores only its sha256.
+
+Pincast issues keys by hand. To ask for one, write to [andrew@pincast.fm](mailto:andrew@pincast.fm).
+
+Your app can hold two live keys at once, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry, seven days after the new key is made unless you ask for less. A revoked key is refused from the next call.
+
+The older address, `https://www.pincaster.com/api/placecard/v1`, and the header's older name, `X-Placecard-Key`, keep working, with the same calls and the same answers. Use api.pincast.fm for new work.
+
+## The calls
+
+| Call | What it does |
+| :- | :- |
+| [`PUT /sets/{set}`](/api-reference/sets/register-a-card-set-or-update-it-and-its-cards) | Register a card set, or update it and its cards |
+| [`GET /sets/{set}`](/api-reference/sets/read-a-set-back) | Read a set back |
+| [`POST /sets/{set}/collects`](/api-reference/collects/record-that-a-person-collected-a-card) | Record that a person collected a card |
+| [`GET /sets/{set}/collects`](/api-reference/collects/read-what-a-person-holds-in-this-set) | Read what a person holds in this set |
+| [`POST /sets/{set}/claims`](/api-reference/claims/move-a-guests-cards-to-the-person-who-just-signed-in) | Move a guest's cards to the person who just signed in |
+| [`POST /people`](/api-reference/people/link-a-person-who-signed-in-to-your-app) | Link a person who signed in to your app |
+| [`GET /apps`](/api-reference/apps/list-the-apps-on-pincast) | List the apps on Pincast. Public: no key |
+
+## Order of checks
+
+Every call that takes a key runs its checks in this order and answers with the first one that fails:
+
+1. The key: 400 when `X-Pincast-Key` and `X-Placecard-Key` both come and differ, 401 without one, 403 for a wrong, revoked, expired or disabled one.
+2. Your key's limit: 429.
+3. The set id: 400.
+4. The `Idempotency-Key`, when one is sent: 400.
+5. The body: 400.
+6. For a collect for a signed in person, and for a claim, that person's sign-in link: 403.
+
+Every error answers with the same JSON body: see [Errors](/api-reference/errors).
+
+## Retries
+
+Every call is safe to send again. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an `Idempotency-Key` header: a string your app makes for one request, such as a UUID, sent again unchanged with each retry of that request.
+
+Placecard keeps the first 200 answer to that key for 24 hours, for your app only, and answers a retry with it, marked `Idempotent-Replayed: true`, without running the call again. The same key with a different request answers 422. A refused call keeps nothing, so its retry runs again.
+
+## Limits
+
+Each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. Past it, a call answers 429 with a `Retry-After` header, the seconds to wait. A refused call doesn't count, so the call sent after the wait goes through.
+
+## Sign-in
+
+When a person signs in to your app through id.pincast.fm, send their ID token to `POST /people` once. Placecard checks it with id.pincast.fm and links the person to your app. From then on your key can record collects (`actor.source` set to `logto`) and claims for that person, and for nobody who hasn't signed in to your app: those calls answer 403.
+
+Guest collects need no link. A guest token is never a person's id: a guest collect for an id that holds cards in your app as a signed-in person answers 409.
+
+Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile. Pincast adds your app's id.pincast.fm application id when it issues your key, so tokens made for your app pass the check.
+
+## What Placecard logs
+
+Placecard logs each call made with your key: its time, method, path without the query string, key and answer, never the body. It keeps the log 90 days.

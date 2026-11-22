@@ -1,0 +1,49 @@
+---
+title: "How the pieces fit"
+description: "Pincast, Placecard, id.pincast.fm and your app: what each one does, what you own and what Pincast keeps."
+---
+
+Your app is where the play happens: where people go, what they find there, and the cards they collect for it. Everything under that is shared by every Pincast app, so your app doesn't have to build it.
+
+## Pincast, the platform
+
+Pincast is what your app builds on. Today it gives you three things.
+
+- **Accounts.** People sign in at id.pincast.fm, with one account for every Pincast app. Your app sends their sign-in token to Placecard once, and from then on your key can record cards for them. See [Sign a person in](/guides/sign-in).
+- **Cards and collecting.** The Placecard registry, at `https://api.pincast.fm/v1`, holds your card sets and their cards, records each card a person collects, and tells your app what a person holds. It's the one API Pincast offers today: the [API reference](/api-reference/introduction) has every call.
+- **Kits.** Ready-made parts for your app's own screens, starting with a card table that shows the cards a person holds. The Placecard kit is on npm as `@pincast/placecard-kit`, and [Show the kit's card table](/guides/card-table) walks through it. It's optional: your app can also draw its screens from what the API returns.
+
+## Your app's collection
+
+Inside your app, a person's collection looks like your app. You read what they hold with `GET /sets/{set}/collects` and draw it with your own name, design and words. An app reads only its own sets, so this collection holds your app's cards and no one else's.
+
+## Placecard, the collection across apps
+
+Placecard is where a person sees every card they've collected, from every Pincast card app, in one collection. Placecard has cards of its own too, made by creators, plus a map, a front page and a page for each card.
+
+Your app appears in Placecard through its cards. The play itself stays in your app, and each card can carry a `url` that leads back to where your app plays it.
+
+People who don't hold your cards see them on the Placecard map, the front page and card pages only when the set lists. A new app's sets list once Pincast has reviewed the app. You can keep a set off those lists yourself by sending `meta.listed` as `false`, and `GET /sets/{set}` answers whether a set lists and, when it doesn't, the first reason. People keep the cards they hold either way.
+
+## The directory
+
+The Pincast directory is the list of apps on Pincast, with a short description, an icon, a category and a color for each. Pincast lists an app after it reviews it. [Appear in the directory and in Placecard](/guides/directory-and-placecard) says how to ask, and how to read the list.
+
+## What you own, and what Pincast keeps
+
+Yours:
+
+- Your sets, with ids your app chooses.
+- Your cards: each card's key, its type, its rarity and the rest of its face, in your app's own words.
+- Anything else you keep on a set (`meta`) or on a card (`data`), up to 8000 characters of JSON each.
+- Your app's guest token for each device, which your app reads itself.
+- Your key, which stays on your server.
+
+Pincast keeps:
+
+- The person's account and sign-in, at id.pincast.fm. Placecard reads only a sign-in token's issuer, subject, audience and times, and keeps none of the person's profile.
+- The sha256 of your key, never the key itself.
+- A log of each call made with your key (its time, method, path without the query string, key and answer, never the body) for 90 days.
+- Whether your sets list in Placecard for people who don't hold their cards. Pincast reviews a new app first, and can take an app or a set off the lists (ask us why if it does).
+
+A card a person collects stays with them. Retiring a card stops new collects, and the people who hold it keep it. No call deletes a collect.

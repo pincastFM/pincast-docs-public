@@ -1,0 +1,74 @@
+---
+title: "Errors"
+description: "One error body for every call: a code to branch on, the field at fault, and a fix in one sentence."
+---
+
+Every error answers with the same JSON body. Here is a call sent with no key:
+
+```bash
+curl https://api.pincast.fm/v1/sets/central-park-trees
+```
+
+```json
+{
+  "url": "/api/placecard/v1/sets/central-park-trees",
+  "statusCode": 401,
+  "statusMessage": "",
+  "message": "X-Pincast-Key required",
+  "stack": "",
+  "data": {
+    "code": "key_missing",
+    "field": "X-Pincast-Key",
+    "fix": "Send your app key in the X-Pincast-Key header, from your server."
+  }
+}
+```
+
+## The body
+
+| Field | What it holds |
+| :- | :- |
+| `url` | The path that was called. |
+| `statusCode` | The HTTP status, repeated. |
+| `statusMessage` | Empty, or `Not Found` on a 404. |
+| `message` | What was wrong, for a person to read. |
+| `stack` | Always empty. |
+| `data` | On every 4xx and on a 503, what to do. |
+
+`data` has three fields:
+
+- `code` is what your app branches on. It stays the same from release to release, while `message` and `fix` are for people and may be worded better later.
+- `field` says where the fault is: a body field's path (`name`, `meta.checkout`, `cards[3].key`, `card.title`, `actor.id`, `to`, `token`), the `set` path parameter, the `actor` query parameter, or a header (`X-Pincast-Key`, `X-Placecard-Key` at the older address, `Idempotency-Key`). It's left out when no one field is at fault.
+- `fix` says what to send instead, in one sentence.
+
+A 500 means something failed on Placecard's side. Its message is `internal server error`, and the same call is safe to send again later.
+
+## Codes
+
+| Code | Status | When |
+| :- | :- | :- |
+| `key_missing` | 401 | No key was sent. |
+| `key_invalid` | 403 | The key has the wrong shape, is unknown, was revoked, or belongs to a disabled app. |
+| `key_expired` | 403 | The key is past its expiry. Send your app's newer key. |
+| `key_conflict` | 400 | `X-Pincast-Key` and `X-Placecard-Key` both came, with different keys. |
+| `rate_limited` | 429 | Your key made as many calls in the last 60 seconds as its limit allows. Wait the seconds in `Retry-After`. |
+| `set_id_invalid` | 400 | The set id breaks its rule: up to 64 characters, each a lowercase letter, a digit, `_` or `-`, starting with a letter or digit. |
+| `idempotency_key_invalid` | 400 | The `Idempotency-Key` isn't 1 to 255 visible ASCII characters with no spaces. |
+| `body_not_json` | 400 | The body isn't a JSON object. |
+| `field_required` | 400 | A field was left out or blank. |
+| `field_invalid` | 400 | A field came with the wrong type, shape, length or range. |
+| `too_many_cards` | 400 | More than 5,000 cards came in one call. Send the rest in later calls: a card left out of a call is kept. |
+| `duplicate_card_key` | 400 | The same card key came twice in one call. |
+| `parent_not_registered` | 400 | A card's parent is neither in the call nor registered. |
+| `too_many_actors` | 400 | More than three actor ids came. |
+| `same_player` | 400 | A claim's `from` and `to` are the same id. |
+| `set_not_registered` | 404 | Your app has no set with this id. |
+| `card_not_registered` | 404 | The collect names a card the set doesn't have. Register it, or send the whole card in the collect. |
+| `card_retired` | 409 | The card is retired and takes no more collects. |
+| `actor_signed_in` | 409 | A guest collect came for an id that holds cards in your app as a signed-in person. |
+| `idempotency_key_reused` | 422 | Your app used this `Idempotency-Key` in the last 24 hours for a different request. |
+| `token_invalid` | 400 | The sign-in token isn't one id.pincast.fm signed for your app. Its `fix` names the check that failed. |
+| `token_expired` | 400 | The sign-in token is past its time. Send a fresh one. |
+| `token_other_app` | 403 | The sign-in token was made for another app's sign-in client, or your app has no sign-in client yet. |
+| `person_not_signed_in` | 403 | The call is for a signed in person your app hasn't sent a token for. Send it with `POST /people`, then send the call again. |
+| `signin_check_unavailable` | 503 | Placecard couldn't check the token with id.pincast.fm just now. Wait the seconds in `Retry-After`, then send the same call again. |

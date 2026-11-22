@@ -1,0 +1,21 @@
+---
+title: "Test and live"
+description: "Every key is live today. What that means while you build, and how to keep experiments out of sight."
+---
+
+Pincast has no test mode yet. Every key it issues is a live key, and everything a key writes is real. Keys are issued by hand: to ask for one, write to [andrew@pincast.fm](mailto:andrew@pincast.fm).
+
+## What a live write means
+
+- No call deletes a set, a card or a collect. A card left out of a `PUT` is kept, and a retired card stays with the people who hold it.
+- `GET /sets/{set}` reports how many collects a set has and how many people made them, and the collects you send while you build are in those numbers.
+- Each key takes 600 calls a minute, and each call made with a key goes in the log Pincast keeps for 90 days.
+
+## While you build
+
+1. **Give experiments a set of their own.** Set ids are yours to choose, so write tries to a set such as `scratch-trees`, apart from the sets people play.
+2. **Keep that set off the lists.** Send `meta.listed` as `false` with it. The set then stays off the Placecard map, the front page and card pages for people who don't hold its cards. A new app's sets don't list at all until Pincast has reviewed the app, and `GET /sets/{set}` answers why a set doesn't list.
+3. **Collect as a guest.** A guest token your app makes for the test is enough: guest collects need no sign-in.
+4. **Make retries safe.** Send `at` with each collect, or an `Idempotency-Key` with each write. A collect with no `at` takes Placecard's clock, so a script that sends it twice counts it twice.
+
+To keep experiments under an app of their own, or to have something you wrote by mistake taken out, ask at [andrew@pincast.fm](mailto:andrew@pincast.fm).

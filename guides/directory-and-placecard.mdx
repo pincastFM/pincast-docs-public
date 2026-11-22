@@ -1,0 +1,111 @@
+---
+title: "Appear in the directory and in Placecard"
+description: "How an app gets listed in the Pincast directory and shows up in Placecard."
+---
+
+People who haven't used your app yet can find it in two places. The Pincast directory lists apps, and Placecard shows cards. Both wait on one review by Pincast.
+
+## Ask for a review
+
+There's no form. To ask for a listing, write to [andrew@pincast.fm](mailto:andrew@pincast.fm). Pincast reads your app's public pages, and may ask you for what they don't show.
+
+The review looks at six things:
+
+1. **Your sets.** Every address is https: the home page, the icon and each card's link. A card's link goes where the card says it goes. Your sets name no checkout of their own, and no card sends a person onto private property or into danger.
+2. **Card text and images.** The text is accurate, lawful and honest about what the card is. The review notes where each image is hosted and its license, and looks for a credit wherever a license asks for one. If people post images or AI writes text, the review asks how your app checks them.
+3. **Sign-in.** It runs through id.pincast.fm on your app's own client. It asks only for what your app uses, and the consent screen names your app. Your app sends each person's ID token to `POST /people`, guests keep guest ids, and their cards move to them when they sign in. [Sign a person in](/guides/sign-in) has the steps.
+4. **Your privacy page.** It exists and your app links to it. It says what location your app collects, why, how long it keeps it and how a person asks for it to be deleted. It names Pincast or Placecard as a place collects go, and it matches what your app does.
+5. **Location.** Your app doesn't sell, rent or give away location or collects, and sends nothing to data brokers or ad networks. The review asks what your app sends the registry (the card's place only, or a person's position too), how long it keeps raw coordinates, and how a person stops precise location. Your app never follows a person or guesses from their visits what they haven't told it.
+6. **Age.** Whether your app is aimed at schools or at children under 13.
+
+The review ends one of three ways: your app passes and Pincast lists it, Pincast asks for fixes first, or it's refused. Once Pincast lists your app, its sets list on Placecard within 30 seconds, and the directory on pincast.fm usually catches up in about 10 minutes.
+
+## What the directory shows
+
+The directory is the list of apps on Pincast. pincast.fm shows it, and anyone can read it with `GET /v1/apps`. Each app in it has these fields:
+
+| Field | What it holds |
+| :- | :- |
+| `id` | Your app's id: the one in your key, and `app` on every set and card. |
+| `name` | Your app's name. |
+| `description` | What your app is, in a sentence or two of plain text, up to 200 characters. `null` until it has one. |
+| `url` | Your app's home page. Always https: a home page that isn't https shows as `null`. |
+| `icon` | The address of your app's icon, always https. `null` until it has one. |
+| `color` | Your app's color as `#rrggbb`, or `null`. |
+| `category` | What kind of app it is: one word from a short list Pincast keeps, or `null`. The list may grow. |
+| `featured` | `null`, or `note` and `until` while your app is the featured one. |
+| `cardApp` | `true` when your app has cards on Placecard. |
+| `cardCount` | How many cards your listed sets show on Placecard. See [In Placecard](#in-placecard) below. |
+
+Pincast sets the description, icon, category and color at the review. No call sets them, and your key can't change them. To change one later, write to andrew@pincast.fm.
+
+Pincast features one app at a time. While its slot runs, the featured app comes first in the list, with a `note` on why (or `null`) and `until`, when the slot ends (or `null` when Pincast ends it by hand). Every other app follows by name, with case ignored.
+
+An app can be in the directory with no sets, or with no set that lists. Then `cardApp` is `false` and `cardCount` is 0.
+
+## Who never appears
+
+The directory and Placecard's lists show an app only while all three hold:
+
+- Pincast has listed it after the review.
+- Pincast hasn't hidden it.
+- Pincast hasn't disabled it.
+
+Pincast can also hide one set and leave the app listed. When Pincast hides your app or a set, people keep the cards they hold and your key keeps writing. Ask at andrew@pincast.fm why it was hidden.
+
+## Read the list
+
+`GET https://api.pincast.fm/v1/apps` takes no key, so a web page may call it too. A key sent with it is ignored: it's never checked, counted against your limit or logged. The call has no limit of its own.
+
+```bash
+curl https://api.pincast.fm/v1/apps
+```
+
+```json
+{
+  "apps": [
+    {
+      "id": "skywatch",
+      "name": "Sky Watch",
+      "description": "The birds of your city's parks, one card for each kind you spot.",
+      "url": "https://skywatch.example",
+      "icon": "https://skywatch.example/icon.png",
+      "color": "#2f6f4f",
+      "category": "nature",
+      "featured": { "note": "New on Pincast", "until": null },
+      "cardApp": true,
+      "cardCount": 3
+    },
+    {
+      "id": "demo",
+      "name": "Demo",
+      "description": "The trees of Central Park, one card for each species.",
+      "url": "https://demo.example",
+      "icon": null,
+      "color": "#3b5bdb",
+      "category": "nature",
+      "featured": null,
+      "cardApp": true,
+      "cardCount": 1
+    }
+  ]
+}
+```
+
+Every text field is plain text. Escape it before you put it in a page.
+
+The answer is the same for everyone, and a web page on any site can read it (`Access-Control-Allow-Origin: *`).
+
+The edge keeps the list 5 minutes, and may give a copy up to a day old while it fetches a fresh one. It never keeps an error. The edge takes its timing out of the `Cache-Control` header, so the header you receive says only `public`.
+
+## In Placecard
+
+Your app reaches Placecard through its cards. The play stays in your app, and each card's `url` leads back to where your app plays it.
+
+In a person's Placecard collection, a card with a `url` has a button that reads "Open in" and your app's name, and opens that address in a new tab. A card with no `url` reads "Open in Placecard" and opens its Placecard page. On a Studio card, the foot prints your app's name and site, and on an open card the name links to your site in a new tab.
+
+People who hold your cards see them in their Placecard collection. People who don't hold them see them on the Placecard map, the front page and card pages only when the set lists, which takes two more things on top of your app being listed: Pincast hasn't hidden the set, and the set's `meta.listed` isn't `false`. [`GET /sets/{set}`](/api-reference/sets/read-a-set-back) answers whether a set lists in `listing.listed` and, when it doesn't, the first reason in `listing.reason`.
+
+Placecard shows a card as a card when it's active, its type isn't `experience` (a walk, say), and it has no parent or its parent is an `experience`. So a tree under its species card isn't shown as a card of its own. That's the rule behind `cardCount`, over your listed sets.
+
+[Write a set and its cards](/guides/sets-and-cards) covers `meta.listed`, parents and retiring a card.

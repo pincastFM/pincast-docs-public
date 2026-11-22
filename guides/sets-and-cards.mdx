@@ -1,0 +1,264 @@
+---
+title: "Write a set and its cards"
+description: "Register a card set and its cards from your server, then update them as they change."
+---
+
+One call writes a set: `PUT /sets/{set}`. The first time, it creates the set and its cards. After that, the same call updates them. It runs on your server, with your key in the `X-Pincast-Key` header.
+
+## Register a set
+
+Your app picks the set id and puts it in the path: up to 64 characters, each a lowercase letter, a digit, `_` or `-`, starting with a letter or digit. Your key writes only your app's sets, so another app's set with the same id is a different set.
+
+This call registers a set of park trees with two cards, a species and one tree that belongs to it:
+
+```bash
+curl -X PUT https://api.pincast.fm/v1/sets/central-park-trees \
+  -H "X-Pincast-Key: $PINCAST_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Central Park Trees",
+    "meta": { "city": "New York" },
+    "cards": [
+      {
+        "key": "species:ginkgo",
+        "type": "species",
+        "title": "Ginkgo",
+        "subtitle": "Ginkgo biloba",
+        "fact": "21,024 in New York",
+        "rarity": "common",
+        "image": {
+          "url": "https://images.example.org/ginkgo.jpg",
+          "credit": "A. Photographer",
+          "license": "CC BY-SA 4.0"
+        },
+        "data": { "count": 21024 }
+      },
+      {
+        "key": "tree:2614648",
+        "type": "tree",
+        "parent": "species:ginkgo",
+        "title": "Ginkgo on East Drive",
+        "url": "https://app.example.org/tree/2614648",
+        "lat": 40.77945,
+        "lng": -73.96318
+      }
+    ]
+  }'
+```
+
+It answers 200 with what the call changed:
+
+```json
+{
+  "app": "demo",
+  "set": "central-park-trees",
+  "name": "Central Park Trees",
+  "setCreated": true,
+  "cards": { "created": 2, "updated": 0, "unchanged": 0, "parentsSet": 1 },
+  "active": { "species": 1, "tree": 1 }
+}
+```
+
+## The set's fields
+
+| Field | Rule |
+| :- | :- |
+| `name` | Required. Text of 1 to 120 characters, trimmed before the check. |
+| `meta` | Optional. A JSON object of up to 8000 characters, for anything your app wants kept on the set. |
+| `cards` | Optional. An array of up to 5,000 cards. |
+
+`meta.listed` set to `false` keeps the set off the Placecard map, the front page and card pages for people who don't hold its cards ([How the pieces fit](/concepts/how-it-fits) says when a set lists). `meta.checkout` is refused unless it's one of Pincast's own checkout paths for your app, so leave it out.
+
+Every call replaces the set's `name` and `meta` with what it sends. A call without `meta` leaves the set with an empty one, which also drops a `listed: false` you sent before. Send the set's full `meta` on every call.
+
+## The card's fields
+
+Each card needs a `key`, a `type` and a `title`. The rest is optional. An empty string or `null` counts as left out, and Placecard ignores fields it doesn't know, so a misspelled field is dropped without an error.
+
+| Field | Rule |
+| :- | :- |
+| `key` | Required. Your app's own id for the card, unique in the set: up to 128 characters, each a letter, a digit, `:`, `_`, `.` or `-`, starting with a letter or digit. |
+| `type` | Required. Your app's own word for the kind of card, such as `species` or `tree`: a lowercase letter, then up to 31 lowercase letters, digits, `_` or `-`. |
+| `title` | Required. Text of up to 200 characters. |
+| `parent` | The key of the card this one belongs to, such as a tree's species. It must be in the same call or already registered in this set, and it can't be the card itself. |
+| `subtitle` | Text of up to 200 characters. |
+| `fact` | Text of up to 300 characters. |
+| `rarity` | Your app's own word, up to 32 characters, printed as given. |
+| `foil` | Only `true` makes a foil card. |
+| `image` | An object: `url` (an http or https address of up to 1000 characters), `credit` (up to 300) and `license` (up to 100). |
+| `url` | Where your app plays this card: an http or https address of up to 1000 characters. |
+| `lat`, `lng` | Where the card is. Send both or neither: `lat` from -90 to 90, `lng` from -180 to 180. A number in a string, such as `"40.77945"`, works too. |
+| `data` | A JSON object of up to 8000 characters, for anything else your card's face needs. |
+| `status` | `active` or `retired`. Left out, it's `active`. A retired card stays with the people who hold it and takes no new collects. |
+
+### The one type Placecard reads
+
+Placecard gives one `type` a meaning of its own: `experience`, a card that stands for something people play from start to end, such as a walk. Placecard lists experiences apart from cards.
+
+On the Placecard map and front page, a card shows on its own when it has no parent or its parent is an experience. A card whose parent is another card, such as a tree under its species, still takes collects, and the parent shows in its place. A parent with no `lat` and `lng` of its own is placed at its nearest child.
+
+## Update the set and its cards
+
+Send the same call again with what changed. Placecard matches each card by its key:
+
+- A new key adds a card.
+- A key the set already has updates that card. Every field but the key can change.
+- A card you leave out of the call is kept as it is.
+
+A card you send replaces the stored card whole. Any field you leave out of it is cleared, its parent too, and its `status` goes back to `active`. So send each card in full every time, with `status` set to `retired` for as long as it should stay retired.
+
+This call retires the tree from the first example and adds a second one. The species card isn't in it, so it's kept as it was:
+
+```json
+{
+  "name": "Central Park Trees",
+  "meta": { "city": "New York" },
+  "cards": [
+    {
+      "key": "tree:2614648",
+      "type": "tree",
+      "parent": "species:ginkgo",
+      "title": "Ginkgo on East Drive",
+      "url": "https://app.example.org/tree/2614648",
+      "lat": 40.77945,
+      "lng": -73.96318,
+      "status": "retired"
+    },
+    {
+      "key": "tree:2614701",
+      "type": "tree",
+      "parent": "species:ginkgo",
+      "title": "Ginkgo by the Pond",
+      "url": "https://app.example.org/tree/2614701",
+      "lat": 40.76632,
+      "lng": -73.97411
+    }
+  ]
+}
+```
+
+```json
+{
+  "app": "demo",
+  "set": "central-park-trees",
+  "name": "Central Park Trees",
+  "setCreated": false,
+  "cards": { "created": 1, "updated": 1, "unchanged": 0, "parentsSet": 1 },
+  "active": { "species": 1, "tree": 1 }
+}
+```
+
+There's no call that deletes a card. Retire it instead. A card's key can't change either: a card sent with a new key is a new card, and the old one stays until you retire it.
+
+More than 5,000 cards go in several calls. Each one carries the set's `name` and full `meta`, and a card's parent goes in the same call or an earlier one.
+
+## What the answer says
+
+| Field | What it holds |
+| :- | :- |
+| `app` | Your app's id. |
+| `set` | The set's id. |
+| `name` | The set's name, trimmed. |
+| `setCreated` | `true` when this call created the set. |
+| `cards.created` | Cards this call added. |
+| `cards.updated` | Cards this call changed. |
+| `cards.unchanged` | Cards this call sent exactly as they were stored. Placecard doesn't touch them. |
+| `cards.parentsSet` | Cards whose parent this call set, changed or removed. A card whose only change is its parent counts here and in `unchanged`. |
+| `active` | The set's active cards after the call, all of them and not only this call's, counted by type. A type with no active card is left out. |
+
+To read the set back, with its active cards by type, its collect counts and whether it lists, call [`GET /sets/{set}`](/api-reference/sets/read-a-set-back).
+
+## From Node
+
+This sends the call from your server with Node 18 or later, which has `fetch` built in. It makes one `Idempotency-Key` for the request and sends the same one with each retry.
+
+```js
+// put-set.mjs
+import { randomUUID } from 'node:crypto'
+
+const API = 'https://api.pincast.fm/v1'
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+export async function putSet(setId, set) {
+  const idempotencyKey = randomUUID()
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let res
+    try {
+      res = await fetch(`${API}/sets/${setId}`, {
+        method: 'PUT',
+        headers: {
+          'X-Pincast-Key': process.env.PINCAST_KEY,
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: JSON.stringify(set),
+      })
+    } catch {
+      // No answer came back: send the same request again
+      await wait(1000 * attempt)
+      continue
+    }
+    if (res.ok) return res.json()
+    if (res.status === 429) {
+      await wait(Number(res.headers.get('Retry-After')) * 1000)
+      continue
+    }
+    if (res.status >= 500) {
+      await wait(1000 * attempt)
+      continue
+    }
+    // Any other error: the request needs fixing, so sending it again won't help
+    const { data } = await res.json()
+    throw new Error(`${res.status} ${data.code} at ${data.field ?? 'the request'}: ${data.fix}`)
+  }
+  throw new Error(`PUT /sets/${setId} failed after 3 tries`)
+}
+
+const answer = await putSet('prospect-park-trees', {
+  name: 'Prospect Park Trees',
+  meta: { city: 'New York' },
+  cards: [
+    { key: 'species:ginkgo', type: 'species', title: 'Ginkgo', subtitle: 'Ginkgo biloba' },
+    { key: 'tree:3301277', type: 'tree', parent: 'species:ginkgo', title: 'Ginkgo by the Long Meadow', lat: 40.66412, lng: -73.97185 },
+  ],
+})
+console.log(answer.cards, answer.active)
+```
+
+## Retries
+
+A set call is safe to send again as it is. The second call finds nothing to change: `setCreated` is `false` and every card counts as `unchanged`.
+
+With an `Idempotency-Key`, a retry gets the first call's answer back as it was, its `setCreated` and counts included, marked `Idempotent-Replayed: true`, and writes nothing. Placecard keeps that answer 24 hours, for your app only. The key matches when the method, the path and the body are the same (the order of keys in the body doesn't matter). The same key with a different request answers 422. A second call with the key while the first is still running waits for the first, then gets its answer.
+
+The whole call is one transaction. A call that fails writes nothing and keeps nothing for its `Idempotency-Key`, so its retry runs again.
+
+## When the call is refused
+
+Placecard checks the call in order: the key, your key's limit, the set id, the `Idempotency-Key`, then the body. In the body it checks `name`, then `meta`, then `cards`, then each card in turn, then duplicate keys and parents, and answers with the first fault. One bad card fails the whole call.
+
+For a card, the message starts with the card's place in the array, and `data.field` gives the path. A second card sent without a title answers 400 with the message `cards[1]: title required` and this `data`:
+
+```json
+{
+  "code": "field_required",
+  "field": "cards[1].title",
+  "fix": "Send title as text of 200 characters at most."
+}
+```
+
+The codes this call can answer with:
+
+| Code | Status | When |
+| :- | :- | :- |
+| `set_id_invalid` | 400 | The set id in the path breaks its rule. |
+| `idempotency_key_invalid` | 400 | The `Idempotency-Key` isn't 1 to 255 visible ASCII characters with no spaces. |
+| `body_not_json` | 400 | The body isn't a JSON object. |
+| `field_required` | 400 | `name` is left out or blank, a card has no `key`, `type` or `title`, or a card has `lat` without `lng` or the other way round. |
+| `field_invalid` | 400 | A field breaks its rule above: the wrong type, shape, length or range. It's also the code for `meta.checkout`, and for `cards` sent as something other than an array. |
+| `too_many_cards` | 400 | More than 5,000 cards came in one call. |
+| `duplicate_card_key` | 400 | The same key came twice in one call. `data.field` names the second card with it. |
+| `parent_not_registered` | 400 | A card's parent is neither in the call nor registered in the set. `data.field` names the first such card, and the message lists up to five of the missing keys. |
+| `idempotency_key_reused` | 422 | Your app used this `Idempotency-Key` in the last 24 hours for a different request. |
+
+The key and the limit answer as they do on every call: `key_missing` (401), `key_invalid` and `key_expired` (403), `key_conflict` (400) and `rate_limited` (429, with `Retry-After`). A 500 is a failure on Placecard's side, and the same call is safe to send again. [Errors](/api-reference/errors) has the full error body and every code.

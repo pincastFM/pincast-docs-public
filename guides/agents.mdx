@@ -1,0 +1,46 @@
+---
+title: "Brief your coding agent"
+description: "A section to paste into your project's AGENTS.md, so a coding agent calls the Placecard API the right way."
+---
+
+Most coding agents read a file called AGENTS.md at the root of a project before they write any code. Paste the section below into yours. It holds what an agent can't work out from the code alone: where the API is, where the key goes and where it must never go, and what to do with each kind of error.
+
+If your agent reads a different file, such as CLAUDE.md for Claude Code, paste it there.
+
+```markdown AGENTS.md wrap
+## Pincast Placecard API
+
+Docs: https://docs.pincast.fm. The API reference, with every call: https://docs.pincast.fm/api-reference/introduction. Error codes: https://docs.pincast.fm/api-reference/errors. Every docs page also comes as Markdown: add `.md` to its address.
+
+### Key and address
+- Call https://api.pincast.fm/v1 from the server only, with the app key in the `X-Pincast-Key` header.
+- Read the key from the environment (`PINCAST_KEY`). It reads `pck_`, the app id, `_`, then the secret.
+- Never put the key in browser code, an app bundle, a query string, a log or the repository.
+- Every key is live. There's no test mode, no test key, no API SDK and no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table. The API has seven calls today: six take the app key, and `GET /apps` is public. Check the reference before calling any other path.
+
+### The seven calls
+- `PUT /sets/{set}`: register a set and its cards, or update them. A card left out is kept.
+- `GET /sets/{set}`: read a set back, with whether it lists in Placecard.
+- `POST /sets/{set}/collects`: record that a person collected a card.
+- `GET /sets/{set}/collects?actor=<id>`: what one person holds in the set (up to three `actor` ids for the same person).
+- `POST /sets/{set}/claims`: move a guest's cards to the person who just signed in.
+- `POST /people`: link a person who signed in, by their id.pincast.fm ID token.
+- `GET /apps`: the apps listed on Pincast. Public: no key, and a key sent is ignored.
+
+### People
+- A guest: `actor.id` is the app's guest token for this device, `actor.source` is `anonymous`. Never use a guest token as a person's id.
+- After a person signs in through id.pincast.fm, send their ID token to `POST /people`. Use the `person` it answers as `actor.id` with `actor.source` `logto`, and as a claim's `to`.
+- A claim's `from` is the guest token the app read on this device, never a value taken from the request. Send one claim for each set.
+
+### Errors
+- Checks run in this order, and the first to fail answers: the key (401, 403, or 400 for two different keys), the key's limit (429), the set id (400), the `Idempotency-Key` (400), the body (400), a signed-in person's link (403).
+- Every error has the same body. Branch on `data.code`, never on `message`. `data.field` names the field at fault, and `data.fix` says what to send instead.
+- Don't resend a 4xx unchanged: fix what `data.field` names first. A 403 `person_not_signed_in` means: send `POST /people`, then send the call again.
+
+### Retries and limits
+- Every call is safe to send again. On the three writes, send an `Idempotency-Key` header: a UUID made once per request and sent unchanged with each retry. A replayed answer comes with `Idempotent-Replayed: true`. The same key with a different request answers 422.
+- Send `at` with every collect. Without it, each resend is a new time and counts as another collect.
+- Each key takes 600 calls a minute. On 429 `rate_limited` or 503 `signin_check_unavailable`, wait the seconds in `Retry-After`, then send the same call once. A 500 is safe to send again later.
+```
+
+The section changes when the API does. When your agent hits a call or a field it doesn't know, the [API reference](/api-reference/introduction) has the current answer, and the [Errors](/api-reference/errors) page has every code.

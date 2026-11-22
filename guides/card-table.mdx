@@ -1,0 +1,391 @@
+---
+title: "Show the kit's card table"
+description: "Show the cards a person holds in your app with the Placecard kit's card table."
+---
+
+The Placecard kit is an npm package, `@pincast/placecard-kit`, that puts a person's cards on a table they can sort, filter and flip. Your server fetches the cards and your key stays there. The kit only draws what it's handed.
+
+These steps build a small app called Lantern Walk with Vite and Vue. It runs on sample cards until you add a key.
+
+## Install
+
+You need Node 20.12 or later. Work in an empty folder, or in the `lantern-walk` folder if you built [Your first collect](/quickstart):
+
+```bash
+npm init -y
+npm pkg set type=module
+npm install @pincast/placecard-kit@1.6.0 vue@3
+npm install -D vite@5 @vitejs/plugin-vue@5
+```
+
+## Save your set
+
+`GET /sets/{set}` answers with a set's name and counts, without its cards, so your app keeps its own copy of what it sent to `PUT /sets/{set}`. Save this one as `data/set.json`:
+
+```json data/set.json
+{
+  "name": "Old Town",
+  "meta": { "face": "lantern", "listed": false },
+  "cards": [
+    {
+      "key": "lantern:ferry-steps",
+      "type": "lantern",
+      "title": "Ferry Steps",
+      "subtitle": "Harbor Road",
+      "fact": "Lit at dusk since 1889",
+      "rarity": "Common",
+      "url": "https://example.org/lanterns/ferry-steps",
+      "data": { "number": 1, "story": "Ferry crews trimmed its wick before the evening crossing." }
+    },
+    {
+      "key": "lantern:market-cross",
+      "type": "lantern",
+      "title": "Market Cross",
+      "subtitle": "Market Square",
+      "fact": "Four panes, one for each road",
+      "rarity": "Uncommon",
+      "url": "https://example.org/lanterns/market-cross",
+      "data": { "number": 2, "story": "Traders met under it to settle the day's accounts." }
+    },
+    {
+      "key": "lantern:harbor-light",
+      "type": "lantern",
+      "title": "Harbor Light",
+      "subtitle": "The Long Quay",
+      "fact": "Seen from two miles out",
+      "rarity": "Rare",
+      "url": "https://example.org/lanterns/harbor-light",
+      "data": { "number": 3, "story": "Boats still steer by it on foggy nights." }
+    }
+  ]
+}
+```
+
+Here's where the kit puts each field:
+
+| Field | On the card |
+| :- | :- |
+| `title` | The name on the front. |
+| `fact` | The line under the name. |
+| `subtitle` | The small line above the name. On a card with no `fact`, it takes the fact's place under the name. |
+| `rarity` | The Rarity filter. |
+| `url` | The button on the open card, which opens it in a new tab. With no `url`, the button opens the card's Placecard page. |
+| `data.number` | The card's number. |
+| `data.story` | The text on the back. |
+| `meta.face` (on the set) | The face its cards take. |
+
+## Add the server route
+
+This file reads one person's collects with your key and turns them into the collection the table draws. `cardsRoute` takes that person as its third argument. Save it as `server/cards.js`:
+
+```js server/cards.js
+import { readFileSync } from 'node:fs'
+import { ttFromAppSet } from '@pincast/placecard-kit/registry'
+
+const APP = { id: 'lantern-walk', name: 'Lanterns', color: '#B4532A' }
+const SET_ID = 'old-town-lanterns'
+const set = { id: SET_ID, app: APP.id, ...JSON.parse(readFileSync('data/set.json', 'utf8')) }
+
+// What the table shows before you have a key.
+export const SAMPLE = {
+  cards: [
+    { key: 'lantern:ferry-steps', collectedAt: '2026-10-03T18:12:00.000Z' },
+    { key: 'lantern:harbor-light', collectedAt: '2026-10-10T18:40:00.000Z' },
+  ],
+}
+
+export const toCollection = collects => ttFromAppSet(set, collects, {
+  apps: [APP],
+  faces: { lantern: { base: 'destination' } },
+  ladder: ['Common', 'Uncommon', 'Rare'],
+})
+
+async function readCollects(actor) {
+  const key = process.env.PINCAST_KEY
+  if (!key) return SAMPLE
+
+  // No one is signed in, so no one holds anything.
+  if (!actor) return null
+
+  const api = process.env.PINCAST_API || 'https://api.pincast.fm/v1'
+  const res = await fetch(`${api}/sets/${SET_ID}/collects?actor=${encodeURIComponent(actor)}`, {
+    headers: { 'X-Pincast-Key': key },
+  })
+  if (!res.ok) throw new Error(`The API answered ${res.status}`)
+  return res.json()
+}
+
+// Pass `actor` from your own sign-in session. If the browser could name
+// the person, anyone could read anyone's cards through your key.
+export async function cardsRoute(req, res, actor) {
+  res.setHeader('Content-Type', 'application/json')
+  res.setHeader('Cache-Control', 'no-store')
+  try {
+    res.end(JSON.stringify(toCollection(await readCollects(actor))))
+  } catch (err) {
+    res.statusCode = 502
+    res.end(JSON.stringify({ error: err.message }))
+  }
+}
+```
+
+`ttFromAppSet` marks the cards in the collects as held. The rest of the set waits under the Missing chip. A retired card shows only to a person who holds it, and an `experience` card never shows. `null` means no one is signed in. The table then shows 0 cards and a Your first card tile, with no chips, as it does for a person who holds nothing yet.
+
+## Draw the table
+
+The config goes in `src/tabletop.js`:
+
+```js src/tabletop.js
+export const config = {
+  contract: 1,
+  app: 'lantern-walk',
+  source: {
+    load: async () => {
+      const res = await fetch('/api/cards')
+      if (!res.ok) throw new Error("Couldn't load the cards")
+      return res.json()
+    },
+  },
+  faces: { lantern: { base: 'destination' } },
+  theme: { class: 'lantern-theme', fonts: [] },
+  hand: { key: 'lantern_hand', scope: 'old-town-lanterns' },
+  modes: { collection: true },
+}
+```
+
+- `faces` declares every face your cards take. `lantern` is this app's own, drawn by the kit's `destination` face.
+- `theme.class` goes on the table, over the kit's Card room theme. `fonts: []` means the page loads no outside fonts.
+- `hand` names where the kit stores a person's hand of cards: localStorage, unless you pass a store.
+
+Mount it from `src/main.js`. `ttHtmlLock` stops the page scrolling behind an open card:
+
+```js src/main.js
+import { createApp, h } from 'vue'
+import { createTabletop, setTtHost, Tabletop, ttHtmlLock } from '@pincast/placecard-kit/vue'
+import { config } from './tabletop.js'
+import './cards.css'
+
+setTtHost({ lock: ttHtmlLock })
+const tabletop = createTabletop(config)
+createApp({ render: () => h(Tabletop, { tabletop }) }).mount('#app')
+```
+
+Your face's look lives in `src/cards.css`, under its `data-face`:
+
+```css src/cards.css
+body {
+  margin: 0;
+  background: #1b1a22;
+}
+
+.ttf[data-face="lantern"].ttf-typo .ttf-art {
+  background: radial-gradient(circle at 50% 30%, #f6d48f 0, #d98a3a 16%, #7a3d2a 38%, #2a2230 72%);
+}
+```
+
+Three small files finish the app. Vite mounts the route while you develop:
+
+```js vite.config.js
+import { existsSync } from 'node:fs'
+import vue from '@vitejs/plugin-vue'
+import { defineConfig } from 'vite'
+import { cardsRoute } from './server/cards.js'
+
+if (existsSync('.env')) process.loadEnvFile('.env')
+
+export default defineConfig({
+  plugins: [vue(), {
+    name: 'cards-route',
+    configureServer: (server) => {
+      // For development only: one test person from .env.
+      server.middlewares.use('/api/cards', (req, res) => cardsRoute(req, res, process.env.PINCAST_ACTOR))
+    },
+  }],
+  test: { server: { deps: { inline: [/@pincast\/placecard-kit/] } } },
+})
+```
+
+```html index.html
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Lantern Walk</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
+```
+
+```bash .gitignore
+node_modules
+dist
+.env
+```
+
+Start it:
+
+```bash
+npx vite
+```
+
+Open http://localhost:5173. Ferry Steps and Harbor Light are on the table, and Market Cross is under the Missing chip. On a phone, swipe the row of chips at the bottom of the screen to reach Missing. Tap a card to open it, then tap Back on the open card to read the other side.
+
+The Back link at the top of the table goes to `/`. To change its words or its address, add `links: { back: { label: 'Home', href: '/' } }` to the config.
+
+`npx vite` has no sign-in, and it runs on a different port from the `:3000` address you registered. It shows the sample cards or, once you add a key, the one test person in `PINCAST_ACTOR`. With the `.env` from Your first collect, it has a key and no test person, so the table starts empty.
+
+## Go live
+
+Every key is live, so what you write with one is real ([Test and live](/concepts/test-and-live)). To ask for a key, write to [andrew@pincast.fm](mailto:andrew@pincast.fm).
+
+If you built [Your first collect](/quickstart), your key and set are already in place. Skip to [Show the table to the person who signed in](#show-the-table-to-the-person-who-signed-in).
+
+1. Change `lantern-walk` to your app's id in `server/cards.js` and `src/tabletop.js`. It's the part of your key between `pck_` and the next underscore.
+2. Put your key in a file named `.env`, next to `package.json`, with the API's address and one test person for `npx vite` to show. Git ignores it:
+
+   ```bash .env
+   PINCAST_KEY=pck_your-app_your-secret
+   PINCAST_API=https://api.pincast.fm/v1
+   PINCAST_ACTOR=guest-lantern-1
+   ```
+
+3. Register the set. Its `meta.listed` is `false`, so it stays off the Placecard map and front page:
+
+   ```bash
+   set -a; . ./.env; set +a
+   curl -X PUT "$PINCAST_API/sets/old-town-lanterns" \
+     -H "X-Pincast-Key: $PINCAST_KEY" \
+     -H "Content-Type: application/json" \
+     -d @data/set.json
+   ```
+
+4. Record one collect for that guest:
+
+   ```bash
+   curl -X POST "$PINCAST_API/sets/old-town-lanterns/collects" \
+     -H "X-Pincast-Key: $PINCAST_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{ "card": "lantern:ferry-steps", "actor": { "id": "guest-lantern-1", "source": "anonymous" } }'
+   ```
+
+5. Restart `npx vite`. The table now shows that guest's one card, with the other two under Missing.
+
+## Show the table to the person who signed in
+
+[Your first collect](/quickstart) ends with a server that knows who signed in. Serve the table from that server and hand it the session's person. It runs on `http://localhost:3000`, the address your sign-in client allows, so sign-in and the table share one cookie. Work in the `lantern-walk` folder, with the files above beside `server.mjs`.
+
+1. Change `lantern-walk` to your app's id in `server/cards.js` and `src/tabletop.js`. If you registered a scratch set, change `old-town-lanterns` in both files too.
+2. Build the table into `dist`:
+
+   ```bash
+   npx vite build
+   ```
+
+3. Save the table's routes as `server/table.js`:
+
+   ```js server/table.js
+   import { readFileSync, statSync } from 'node:fs'
+   import { basename, extname, join } from 'node:path'
+   import { cardsRoute } from './cards.js'
+
+   const TYPES = {
+     '.html': 'text/html; charset=utf-8',
+     '.js': 'text/javascript; charset=utf-8',
+     '.css': 'text/css; charset=utf-8',
+   }
+
+   function sendFile(res, file) {
+     if (!statSync(file, { throwIfNoEntry: false })?.isFile()) return res.writeHead(404).end()
+     res.writeHead(200, { 'Content-Type': TYPES[extname(file)] ?? 'application/octet-stream' })
+     res.end(readFileSync(file))
+   }
+
+   // Answers the table's routes and returns true. Any other request returns false.
+   export async function tableRoute(req, res, url, person) {
+     if (req.method !== 'GET') return false
+     if (url.pathname === '/api/cards') {
+       await cardsRoute(req, res, person)
+     } else if (url.pathname === '/table') {
+       if (person) sendFile(res, 'dist/index.html')
+       else res.writeHead(303, { Location: '/' }).end()
+     } else if (url.pathname.startsWith('/assets/')) {
+       sendFile(res, join('dist/assets', basename(url.pathname)))
+     } else {
+       return false
+     }
+     return true
+   }
+   ```
+
+4. Add one import at the top of `server.mjs`:
+
+   ```js
+   import { tableRoute } from './server/table.js'
+   ```
+
+5. In the request handler at the bottom of `server.mjs`, add one line above `res.writeHead(404).end()`:
+
+   ```js
+   if (await tableRoute(req, res, url, sessionOf(req)?.person)) return
+   ```
+
+6. Stop the server if it's running, and start it again:
+
+   ```bash
+   node server.mjs
+   ```
+
+Sign in at http://localhost:3000, then open http://localhost:3000/table. The table shows the cards that person holds, with the rest of the set under Missing. The person comes from the session, so nothing sent from the browser can ask for someone else's cards. Anyone signed out who opens `/table` lands on `/`, where they can sign in.
+
+Run `npx vite build` again after you change anything in `src`, and restart the server after you change anything in `server`.
+
+In production, do the same on your own server: pass `cardsRoute` the person from your session, and run it from the project folder, where it reads `data/set.json` and `dist`.
+
+## Test it with the kit's conformance suite
+
+`ttConformance` checks your config, your collection, your theme's tokens, your class names and the table's markup at phone and laptop widths. Install what it needs:
+
+```bash
+npm install -D vitest@2 jsdom@25 @electric-sql/pglite@0.5
+```
+
+```js test/conformance.test.js
+// @vitest-environment jsdom
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { ttConformance } from '@pincast/placecard-kit/conformance'
+import { SAMPLE, toCollection } from '../server/cards.js'
+import { config } from '../src/tabletop.js'
+
+ttConformance({
+  name: 'lantern-walk',
+  config,
+  collection: toCollection(SAMPLE),
+  css: [{ name: 'cards.css', text: readFileSync('src/cards.css', 'utf8') }],
+  base: 'cardroom',
+  goldens: resolve('test/goldens'),
+})
+```
+
+The first run writes the expected markup to `test/goldens`. Read it and commit it, and later runs compare against it. A new app id, theme or face changes that markup, so write it again when you make one:
+
+```bash
+UPDATE_GOLDENS=1 npx vitest run
+npx vitest run
+```
+
+## When something goes wrong
+
+| What you see | What to do |
+| :- | :- |
+| `The API answered 404` | The set isn't registered for this key's app. Send `PUT /sets/{set}` first. |
+| `The API answered 403` | The key is wrong, revoked or expired. |
+| `collects.app: 'x', but the set is y's` | The key belongs to another app. Change the app id in both files. |
+| `not in config.faces` | A card or set names a face your config doesn't declare. Add it to `faces` in both files. |
+| `Cannot find package 'jsdom'` | Conformance needs `jsdom` as a dev dependency. |
+
+The [kit's contract](https://github.com/pincastFM/placecard-kit-public/blob/main/CONTRACT.md) lists every config key, face, theme token and event.

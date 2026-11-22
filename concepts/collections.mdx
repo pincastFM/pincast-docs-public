@@ -1,0 +1,48 @@
+---
+title: "Your app's collection and Placecard's"
+description: "Sets, cards, collects and claims, what a guest is, and what changes when a person signs in."
+---
+
+A person's collection is the cards they hold. They see it in two places. Inside your app, it's the cards from your app's sets, drawn your way. In Placecard, it's every card they've collected across Pincast's card apps, in one collection.
+
+## Sets and cards
+
+A **set** is a group of your app's cards, such as the trees of one park. Your app picks its id: up to 64 characters, each a lowercase letter, a digit, `_` or `-`, starting with a letter or digit. It has a name, and `meta` for anything else your app wants kept. Your key reads and writes only your app's sets.
+
+A **card** is one thing a person can collect. Its key is your app's own id for it, unique in the set, and its type is your app's own word for the kind of card, such as `tree` or `species`. The face is yours too: a title, a subtitle, a fact, a rarity, an image, a place, and `data` for anything else. A card can have a parent, the card it belongs to: a tree card's parent is its species card.
+
+A retired card stays with the people who hold it and takes no new collects.
+
+## Collects
+
+A **collect** records that a person collected a card. Your app sends the card (its key, or the whole card to register or update it first), the person as your app knows them, and when it was collected, on your app's clock. It can send the place too.
+
+What a person holds follows from their collects:
+
+- Collect a tree card and the person holds its species card as well. `GET /sets/{set}/collects` lists both, and the species card names the tree it was first held through in `via`.
+- `count` is how many times the person collected that card themselves, and 0 for a card held only through a child card.
+- A collect with the same card, person and time answers as the first one did. A later time counts one more collect, and an earlier time moves the first collect back. A collect sent with no time takes Placecard's clock, so each resend of it is a new time: send it with an `Idempotency-Key` to retry it safely.
+
+`GET /sets/{set}/collects` answers one person's cards in a set, first collect first, with a count for each card type. You can send up to three ids for the same person, such as their Logto id and this device's guest token. A card held under more than one is listed once, at its earliest collect.
+
+## Guests
+
+A guest is a person who hasn't signed in to your app. Your app sends its guest token for the device as `actor.id`, with `actor.source` set to `anonymous`, and guest collects need nothing else.
+
+A guest token is never a person's id. A guest collect for an id that holds cards in your app as a signed-in person answers 409 `actor_signed_in`.
+
+## When a person signs in
+
+People sign in through id.pincast.fm, with one account for every Pincast app. Three things change for your app.
+
+1. **Your app links them.** Send their ID token to `POST /people`, once or at each sign-in. Placecard checks it with id.pincast.fm, links the person to your app, and answers with `person`, their Logto id.
+2. **Their collects go under that id.** Send it as `actor.id`, with `actor.source` set to `logto`. A collect or a claim for someone your app hasn't linked answers 403 `person_not_signed_in`.
+3. **Your app can claim their guest cards.** `POST /sets/{set}/claims` moves the cards collected under this device's guest token (`from`) to the person (`to`). Your app reads the guest token itself, never from what the person sent. A claim works on one set, so send one for each set the guest collected in.
+
+Only cards collected as a guest move. A card the person already holds is merged: the earlier first collect, the later last collect, and the counts added. The guest's copy is kept, marked as claimed. A claim with nothing left to move answers `claimed` 0, so it's safe to send again.
+
+## Your app's collection, and Placecard's
+
+The collection inside your app is yours to show. Read it with `GET /sets/{set}/collects` and draw it with your app's own name and design. It holds only your app's cards, because your key reads only your app's sets.
+
+Placecard's collection is the person's whole collection: the cards they've collected in every Pincast card app and in Placecard itself. Your cards reach people who don't hold them through the Placecard map, the front page and card pages, once your set lists. [How the pieces fit](/concepts/how-it-fits) says when a set lists.

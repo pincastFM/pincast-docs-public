@@ -1,0 +1,118 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "Pincast developers",
+  "description": "Build apps for real-world play on Pincast: card sets, collects and sign-in through the Placecard registry.",
+  "colors": {
+    "primary": "#1d5fa8",
+    "light": "#86c6ff",
+    "dark": "#1d5fa8"
+  },
+  "favicon": "/favicon.svg",
+  "appearance": {
+    "default": "dark"
+  },
+  "background": {
+    "decoration": "grid",
+    "color": {
+      "light": "#f4f7f5",
+      "dark": "#0c2747"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Mozilla Headline"
+    },
+    "body": {
+      "family": "Inter Tight"
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "label": "pincast.fm",
+        "href": "https://pincast.fm"
+      }
+    ]
+  },
+  "contextual": {
+    "options": ["copy", "view"]
+  },
+  "api": {
+    "playground": {
+      "display": "simple"
+    },
+    "examples": {
+      "languages": ["curl", "javascript", "python"]
+    }
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Get started",
+        "pages": [
+          "introduction",
+          "quickstart"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/sign-in",
+          "guides/sets-and-cards",
+          "guides/card-table",
+          "guides/directory-and-placecard",
+          "guides/agents"
+        ]
+      },
+      {
+        "group": "Concepts",
+        "pages": [
+          "concepts/how-it-fits",
+          "concepts/collections",
+          "concepts/test-and-live"
+        ]
+      },
+      {
+        "group": "API reference",
+        "openapi": "api-reference/openapi.json",
+        "pages": [
+          "api-reference/introduction",
+          "api-reference/errors",
+          {
+            "group": "Sets",
+            "pages": [
+              "PUT /sets/{set}",
+              "GET /sets/{set}"
+            ]
+          },
+          {
+            "group": "Collects",
+            "pages": [
+              "POST /sets/{set}/collects",
+              "GET /sets/{set}/collects"
+            ]
+          },
+          {
+            "group": "Claims",
+            "pages": [
+              "POST /sets/{set}/claims"
+            ]
+          },
+          {
+            "group": "People",
+            "pages": [
+              "POST /people"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              "GET /apps"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

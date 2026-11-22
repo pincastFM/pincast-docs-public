@@ -1,0 +1,178 @@
+---
+title: "Sign a person in"
+description: "Link a person who signs in to your app through id.pincast.fm, so your key can record their collects."
+---
+
+People sign in to your app with their Pincast account at id.pincast.fm. Your server runs the sign-in, then sends the person's ID token to `POST /people` once per sign-in. After that, your key can record their collects and claims.
+
+The code below comes from the server in [Your first collect](/quickstart), which has the whole file.
+
+## Register your app
+
+Pincast registers your app during your invite. Write to [andrew@pincast.fm](mailto:andrew@pincast.fm) with your app's name and the id you'd like, its exact sign-in addresses (no wildcards), and the https addresses of its home page, logo, terms and privacy policy.
+
+Your app becomes a Traditional app on id.pincast.fm: its sign-in runs on your server, next to your key. You receive three values in a private file:
+
+| Value | What it is |
+| :- | :- |
+| `PINCAST_SIGNIN_CLIENT_ID` | Your client id. Your ID tokens name it in `aud`. |
+| `PINCAST_SIGNIN_CLIENT_SECRET` | Your client secret. Keep it on your server. |
+| `PINCAST_SIGNIN_ISSUER` | `https://id.pincast.fm/oidc` |
+
+To add or change a sign-in address later, email it to [andrew@pincast.fm](mailto:andrew@pincast.fm).
+
+## Send the person to sign in
+
+Redirect the person to `https://id.pincast.fm/oidc/auth` with these parameters:
+
+| Parameter | Value |
+| :- | :- |
+| `client_id` | Your client id. |
+| `redirect_uri` | One of your registered sign-in addresses, exactly. |
+| `response_type` | `code` |
+| `scope` | `openid offline_access profile` |
+| `state` | A random value you keep in the person's session and check when they return. |
+| `code_challenge` | The base64url sha256 of a random verifier you keep in the session. |
+| `code_challenge_method` | `S256` |
+| `prompt` | `consent` |
+
+```js
+function startSignIn(req, res) {
+  const session = sessionOf(req) ?? openSession(res)
+  session.state = random(18)
+  session.verifier = random(32)
+  const url = new URL(`${ISSUER}/auth`)
+  url.search = new URLSearchParams({
+    client_id: env.PINCAST_SIGNIN_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid offline_access profile',
+    state: session.state,
+    code_challenge: createHash('sha256').update(session.verifier).digest('base64url'),
+    code_challenge_method: 'S256',
+    prompt: 'consent',
+  })
+  res.writeHead(302, { Location: url.href }).end()
+}
+```
+
+Ask for those three scopes and no others: id.pincast.fm refuses a scope your app wasn't given, with `invalid_scope`.
+
+After signing in, the person sees a consent screen with:
+
+- Your app's name and logo, beside Pincast's.
+- The account they're signing in with.
+- What your app asks for: "Your name, username, avatar, and other profile info".
+- **Cancel** and **Authorize**.
+- Links to your terms and privacy policy.
+
+**Authorize** sends them to your `redirect_uri` with `code` and `state`. **Cancel** sends them back with `error` in place of a code.
+
+## Exchange the code
+
+From your server, post the code to `https://id.pincast.fm/oidc/token`. Your client id and secret go in HTTP Basic, and the verifier goes in the body:
+
+```js
+async function exchangeCode(code, verifier) {
+  const client = `${env.PINCAST_SIGNIN_CLIENT_ID}:${env.PINCAST_SIGNIN_CLIENT_SECRET}`
+  const res = await fetch(`${ISSUER}/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(client).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+    }),
+    signal: AbortSignal.timeout(8000),
+  })
+  const tokens = await res.json().catch(() => ({}))
+  if (!res.ok || !tokens.id_token) throw new Error(`The code exchange answered ${res.status}: ${tokens.error}`)
+  return tokens
+}
+```
+
+The answer holds `id_token`, `access_token`, `refresh_token`, `expires_in`, `scope` and `token_type`. The next step uses `id_token`.
+
+## Link the person
+
+Check `state` first, then exchange the code and send the ID token to [`POST /people`](/api-reference/people/link-a-person-who-signed-in-to-your-app), once per sign-in:
+
+```js
+async function finishSignIn(req, res, query) {
+  const session = sessionOf(req)
+  if (!session?.state || query.get('state') !== session.state) {
+    return send(res, 400, '<p>This sign-in has expired. <a href="/signin">Sign in again</a>.</p>')
+  }
+  const { verifier } = session
+  delete session.state
+  delete session.verifier
+  if (query.get('error')) return send(res, 200, '<p>You didn\'t sign in. <a href="/">Back</a>.</p>')
+
+  const tokens = await exchangeCode(query.get('code'), verifier)
+  // Once per sign-in: this links the person to your app, so your key can record their collects.
+  const { person } = await api('POST', '/people', { token: tokens.id_token })
+  const { username } = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url'))
+
+  // A new session id at sign-in, so an id set before it can't carry over.
+  sessions.delete(sidOf(req))
+  openSession(res, { person, name: username ?? person })
+  res.writeHead(303, { Location: '/' }).end()
+}
+```
+
+`POST /people` answers with the person's id:
+
+```json
+{
+  "app": "your-app",
+  "person": "q8n2v5x7c1z4",
+  "linkedAt": "2026-11-14T15:10:01.000Z"
+}
+```
+
+Keep `person` in your session. Send it as `actor.id`, with `actor.source` set to `logto`, in each collect:
+
+```js
+  await api('POST', `/sets/${SET_ID}/collects`, {
+    card: CARD,
+    actor: { id: session.person, source: 'logto' },
+    at: new Date().toISOString(),
+  })
+```
+
+Sending a token for a person who's already linked answers the same link, so a returning person needs no special case. To move cards they collected as a guest, see [Your app's collection and Placecard's](/concepts/collections).
+
+## What your app receives
+
+The ID token is a JWT signed with ES384, and it lasts one hour. It holds:
+
+| Claim | What it holds |
+| :- | :- |
+| `sub` | The person's Pincast id, the same value as `person`. |
+| `name`, `username`, `picture` | Their profile. |
+| `created_at`, `updated_at` | When their account was created and last changed. |
+| `iss` | `https://id.pincast.fm/oidc` |
+| `aud` | Your client id. |
+| `iat`, `exp` | When the token was issued and when it expires. |
+
+**Your app doesn't receive the person's email address.** The token has no `email` claim. If your app needs an address, ask the person for it in your app.
+
+The token answer also carries a refresh token, because the scopes include `offline_access`. Recording collects doesn't need it. If you keep one, keep it on your server, like your secret.
+
+Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile.
+
+## When a call is refused
+
+| Code | Status | What to do |
+| :- | :- | :- |
+| `token_other_app` | 403 | The token was made for another client, or your app has no sign-in client yet. Check `PINCAST_SIGNIN_CLIENT_ID`, then write to [andrew@pincast.fm](mailto:andrew@pincast.fm). |
+| `token_expired` | 400 | The token is past its hour. Have the person sign in again. |
+| `token_invalid` | 400 | Send the `id_token`, unchanged. The answer's `data.fix` names the check that failed. |
+| `signin_check_unavailable` | 503 | Wait the seconds in `Retry-After`, then send the same call again. |
+| `person_not_signed_in` | 403 | A collect or claim came before the link. Send `POST /people`, then send the call again. |
+
+[Errors](/api-reference/errors) lists every code.
