@@ -1,0 +1,297 @@
+---
+title: "Your first signed-in collect"
+description: "Sign a real person in and record their first collect on your live app."
+---
+
+You'll build a one-file Node server for Lantern Walk, the small app from [Show the kit's card table](/guides/card-table). A person signs in with their Pincast account, taps a button and collects a card. The first person is you.
+
+<Warning>
+This page uses your live key, because a test key can't link a real person. The set and the collect you make here are real, and no API call deletes them. The set stays off the Placecard map and front page for anyone who doesn't hold its cards.
+
+To keep the run apart from your app's real sets, use an id such as `scratch-lanterns` in place of `old-town-lanterns` in step 3 and in `server.mjs`.
+</Warning>
+
+## What you need
+
+- Node 20.12 or later, and `curl`. The server installs no packages.
+- A live app and its live key. The [Quickstart](/quickstart) ends with both.
+- An https address that reaches this server on port 3000, such as a tunnel or a preview deployment. This guide uses a live app, and a live app can't keep a localhost sign-in address.
+
+## 1. Make your sign-in client
+
+Open your app on the [dashboard](https://pincast.fm/developers/dashboard) and go to its **Sign-in** tab. Fill in the form:
+
+- **App name**: the name people see when they sign in.
+- **Sign-in addresses**: your https address with `/callback` on the end, such as `https://your-address.example/callback`. It has to match exactly, with no wildcards.
+- **Logo address**, **Terms of use address** and **Privacy policy address**: https links. People see the logo and links to both policies when they approve your app.
+- **Permissions**: leave **Name, username and picture** ticked.
+
+Tap **Save and make client**. Pincast registers your app on id.pincast.fm as a Traditional app, the kind that keeps its secret on your server. The page shows your **Client ID**, and shows the secret once. Tap **Copy secret**, store it, then tap **I saved this secret**.
+
+## 2. Set up the folder
+
+```bash
+mkdir -p lantern-walk/data
+cd lantern-walk
+```
+
+Put your live key and your client's values in a file named `.env`:
+
+```bash .env
+PINCAST_KEY=pck_your-app_your-secret
+PINCAST_SIGNIN_CLIENT_ID=your-client-id
+PINCAST_SIGNIN_CLIENT_SECRET=your-client-secret
+PINCAST_SIGNIN_ISSUER=https://id.pincast.fm/oidc
+PINCAST_SIGNIN_REDIRECT=https://your-address.example/callback
+PINCAST_API=https://api.pincast.fm/v1
+```
+
+`PINCAST_API` is the address your server and the `curl` command call. The key and the client secret stay on your server. Keep `.env` out of git.
+
+Save the set as `data/set.json`:
+
+```json data/set.json
+{
+  "name": "Old Town",
+  "meta": { "face": "lantern", "listed": false },
+  "cards": [
+    {
+      "key": "lantern:ferry-steps",
+      "type": "lantern",
+      "title": "Ferry Steps",
+      "subtitle": "Harbor Road",
+      "fact": "Lit at dusk since 1889",
+      "rarity": "Common",
+      "url": "https://example.org/lanterns/ferry-steps",
+      "data": { "number": 1, "story": "Ferry crews trimmed its wick before the evening crossing." }
+    },
+    {
+      "key": "lantern:market-cross",
+      "type": "lantern",
+      "title": "Market Cross",
+      "subtitle": "Market Square",
+      "fact": "Four panes, one for each road",
+      "rarity": "Uncommon",
+      "url": "https://example.org/lanterns/market-cross",
+      "data": { "number": 2, "story": "Traders met under it to settle the day's accounts." }
+    },
+    {
+      "key": "lantern:harbor-light",
+      "type": "lantern",
+      "title": "Harbor Light",
+      "subtitle": "The Long Quay",
+      "fact": "Seen from two miles out",
+      "rarity": "Rare",
+      "url": "https://example.org/lanterns/harbor-light",
+      "data": { "number": 3, "story": "Boats still steer by it on foggy nights." }
+    }
+  ]
+}
+```
+
+## 3. Register the set
+
+```bash
+set -a; . ./.env; set +a
+curl -X PUT "$PINCAST_API/sets/old-town-lanterns" \
+  -H "X-Pincast-Key: $PINCAST_KEY" \
+  -H "Content-Type: application/json" \
+  -d @data/set.json
+```
+
+It answers with what the call changed, under your app's id:
+
+```json
+{
+  "app": "your-app",
+  "set": "old-town-lanterns",
+  "name": "Old Town",
+  "setCreated": true,
+  "cards": { "created": 3, "updated": 0, "unchanged": 0, "parentsSet": 0 },
+  "active": { "lantern": 3 }
+}
+```
+
+## 4. Write the server
+
+Save this as `server.mjs`:
+
+```js server.mjs
+import { createHash, randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+
+process.loadEnvFile('.env')
+
+const env = process.env
+const API = env.PINCAST_API || 'https://api.pincast.fm/v1'
+const ISSUER = env.PINCAST_SIGNIN_ISSUER
+const PORT = Number(env.PORT) || 3000
+const REDIRECT_URI = env.PINCAST_SIGNIN_REDIRECT
+const SET_ID = 'old-town-lanterns'
+const CARD = 'lantern:ferry-steps'
+
+// The API doesn't send a set's cards back, so the app keeps its own copy.
+const setCards = JSON.parse(readFileSync('data/set.json', 'utf8')).cards
+const titleOf = key => setCards.find(card => card.key === key)?.title ?? key
+
+// One session per browser, held in memory. A real app keeps them in its own store.
+const sessions = new Map()
+const random = size => randomBytes(size).toString('base64url')
+const sidOf = req => /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
+const sessionOf = req => sessions.get(sidOf(req))
+
+function openSession(res, data = {}) {
+  const sid = random(24)
+  sessions.set(sid, data)
+  res.setHeader('Set-Cookie', `sid=${sid}; HttpOnly; Secure; SameSite=Lax; Path=/`)
+  return data
+}
+
+const escapeHtml = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+
+function send(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' })
+  res.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lantern Walk</title><body style="font: 16px/1.5 system-ui; max-width: 32rem; margin: 2rem auto; padding: 0 1rem">${body}`)
+}
+
+// Every Pincast call goes through here, from the server, with the key in a header.
+async function api(method, path, body) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    headers: { 'X-Pincast-Key': env.PINCAST_KEY, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(8000),
+  })
+  const answer = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(`${method} ${path} answered ${res.status}: ${answer?.data?.fix ?? answer?.message}`)
+  return answer
+}
+
+function startSignIn(req, res) {
+  const session = sessionOf(req) ?? openSession(res)
+  session.state = random(18)
+  session.verifier = random(32)
+  const url = new URL(`${ISSUER}/auth`)
+  url.search = new URLSearchParams({
+    client_id: env.PINCAST_SIGNIN_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid offline_access profile',
+    state: session.state,
+    code_challenge: createHash('sha256').update(session.verifier).digest('base64url'),
+    code_challenge_method: 'S256',
+    prompt: 'consent',
+  })
+  res.writeHead(302, { Location: url.href }).end()
+}
+
+async function exchangeCode(code, verifier) {
+  const client = `${env.PINCAST_SIGNIN_CLIENT_ID}:${env.PINCAST_SIGNIN_CLIENT_SECRET}`
+  const res = await fetch(`${ISSUER}/token`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${Buffer.from(client).toString('base64')}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT_URI,
+      code_verifier: verifier,
+    }),
+    signal: AbortSignal.timeout(8000),
+  })
+  const tokens = await res.json().catch(() => ({}))
+  if (!res.ok || !tokens.id_token) throw new Error(`The code exchange answered ${res.status}: ${tokens.error}`)
+  return tokens
+}
+
+async function finishSignIn(req, res, query) {
+  const session = sessionOf(req)
+  if (!session?.state || query.get('state') !== session.state) {
+    return send(res, 400, '<p>This sign-in has expired. <a href="/signin">Sign in again</a>.</p>')
+  }
+  const { verifier } = session
+  delete session.state
+  delete session.verifier
+  if (query.get('error')) return send(res, 200, '<p>You didn\'t sign in. <a href="/">Back</a>.</p>')
+
+  const tokens = await exchangeCode(query.get('code'), verifier)
+  // Once per sign-in: this links the person to your app, so your key can record their collects.
+  const { person } = await api('POST', '/people', { token: tokens.id_token })
+  const { username } = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url'))
+
+  // A new session id at sign-in, so an id set before it can't carry over.
+  sessions.delete(sidOf(req))
+  openSession(res, { person, name: username ?? person })
+  res.writeHead(303, { Location: '/' }).end()
+}
+
+async function home(req, res) {
+  const session = sessionOf(req)
+  if (!session?.person) return send(res, 200, '<p><a href="/signin">Sign in with Pincast</a></p>')
+  const actor = encodeURIComponent(session.person)
+  const { cards } = await api('GET', `/sets/${SET_ID}/collects?actor=${actor}`)
+  const held = cards.map(card => `<li>${escapeHtml(titleOf(card.key))}</li>`).join('')
+  send(res, 200, `<p>Signed in as ${escapeHtml(session.name)}.</p>
+<form method="post" action="/collect"><button>Collect ${escapeHtml(titleOf(CARD))}</button></form>
+<h2>Your cards</h2><ul>${held || '<li>None yet.</li>'}</ul>`)
+}
+
+async function collect(req, res) {
+  const session = sessionOf(req)
+  if (!session?.person) return res.writeHead(303, { Location: '/' }).end()
+  await api('POST', `/sets/${SET_ID}/collects`, {
+    card: CARD,
+    actor: { id: session.person, source: 'logto' },
+    at: new Date().toISOString(),
+  })
+  res.writeHead(303, { Location: '/' }).end()
+}
+
+createServer(async (req, res) => {
+  const url = new URL(req.url, `http://localhost:${PORT}`)
+  const route = `${req.method} ${url.pathname}`
+  try {
+    if (route === 'GET /') return await home(req, res)
+    if (route === 'GET /signin') return startSignIn(req, res)
+    if (route === 'GET /callback') return await finishSignIn(req, res, url.searchParams)
+    if (route === 'POST /collect') return await collect(req, res)
+    res.writeHead(404).end()
+  } catch (error) {
+    console.error(error.message)
+    send(res, 500, '<p>Something went wrong. The server\'s terminal says what.</p>')
+  }
+}).listen(PORT, 'localhost', () => console.log(`Lantern Walk is listening on port ${PORT}`))
+```
+
+Four routes do the work:
+
+- `GET /signin` sends the person to id.pincast.fm with a one-time `state` and a PKCE challenge.
+- `GET /callback` exchanges the code for tokens, then sends the ID token to `POST /people`. That call links the person to your app and answers with their id.
+- `POST /collect` records the card under that id, with `actor.source` set to `logto`.
+- `GET /` reads what the person holds with `GET /sets/{set}/collects`.
+
+## 5. Sign in and collect
+
+```bash
+node server.mjs
+```
+
+Point your tunnel or deployment at port 3000, then open your https address. Use the same host name you registered, because your sign-in address and the session cookie both name it.
+
+1. Tap **Sign in with Pincast** and sign in at id.pincast.fm.
+2. The consent screen names your app and asks for "Your name, username, avatar, and other profile info". Tap **Authorize**.
+3. Back in your app, tap **Collect Ferry Steps**.
+
+Ferry Steps appears under **Your cards**, read back from Placecard. That's your first signed-in collect.
+
+Each tap records one more collect, because the button sends a new time with each one. The card stays listed once, its `count` goes up, and no call takes a collect back.
+
+## Next
+
+- [Sign a person in](/guides/sign-in) explains each sign-in step and what your app receives.
+- [Show the kit's card table](/guides/card-table) draws these cards on a table people can sort and flip.
+- [Your app's collection and Placecard's](/concepts/collections) covers guests, and moving their cards when they sign in.

@@ -9,7 +9,7 @@ These steps build a small app called Lantern Walk with Vite and Vue. It runs on 
 
 ## Install
 
-You need Node 20.12 or later. Work in an empty folder, or in the `lantern-walk` folder if you built [Your first collect](/quickstart):
+You need Node 20.12 or later. Work in an empty folder, or in the `lantern-walk` folder if you built [Your first signed-in collect](/guides/signed-in-collect):
 
 ```bash
 npm init -y
@@ -236,22 +236,24 @@ Open http://localhost:5173. Ferry Steps and Harbor Light are on the table, and M
 
 The Back link at the top of the table goes to `/`. To change its words or its address, add `links: { back: { label: 'Home', href: '/' } }` to the config.
 
-`npx vite` has no sign-in, and it runs on a different port from the `:3000` address you registered. It shows the sample cards or, once you add a key, the one test person in `PINCAST_ACTOR`. With the `.env` from Your first collect, it has a key and no test person, so the table starts empty.
+`npx vite` has no sign-in, and it runs on a different port from your server. It shows the sample cards or, once you add a key, the one person in `PINCAST_ACTOR`. With the `.env` from [Your first signed-in collect](/guides/signed-in-collect), it has a key and no person, so the table starts empty.
 
-## Go live
+## Add your key
 
-Every key is live, so what you write with one is real ([Test and live](/concepts/test-and-live)). To ask for a key, write to [support@pincast.fm](mailto:support@pincast.fm).
+Use a test key while you build. The [Quickstart](/quickstart) gets you one, and so does the **Keys** tab on the [dashboard](https://pincast.fm/developers/dashboard). A test key writes only for test people, whose ids start `test_` ([Test and live](/concepts/test-and-live)).
 
-If you built [Your first collect](/quickstart), your key and set are already in place. Skip to [Show the table to the person who signed in](#show-the-table-to-the-person-who-signed-in).
+If you built [Your first signed-in collect](/guides/signed-in-collect), your live key and set are already in place. Skip to [Show the table to the person who signed in](#show-the-table-to-the-person-who-signed-in).
 
 1. Change `lantern-walk` to your app's id in `server/cards.js` and `src/tabletop.js`. It's the part of your key between `pck_` and the next underscore.
-2. Put your key in a file named `.env`, next to `package.json`, with the API's address and one test person for `npx vite` to show. Git ignores it:
+2. Put your key in a file named `.env`, next to `package.json`, with the API's address and one person for `npx vite` to show. Git ignores it:
 
    ```bash .env
    PINCAST_KEY=pck_your-app_your-secret
    PINCAST_API=https://api.pincast.fm/v1
-   PINCAST_ACTOR=guest-lantern-1
+   PINCAST_ACTOR=test_demo
    ```
+
+   With a live key, use a guest id such as `guest-lantern-1`.
 
 3. Register the set. Its `meta.listed` is `false`, so it stays off the Placecard map and front page:
 
@@ -263,20 +265,20 @@ If you built [Your first collect](/quickstart), your key and set are already in 
      -d @data/set.json
    ```
 
-4. Record one collect for that guest:
+4. Record one collect for that person:
 
    ```bash
    curl -X POST "$PINCAST_API/sets/old-town-lanterns/collects" \
      -H "X-Pincast-Key: $PINCAST_KEY" \
      -H "Content-Type: application/json" \
-     -d '{ "card": "lantern:ferry-steps", "actor": { "id": "guest-lantern-1", "source": "anonymous" } }'
+     -d '{ "card": "lantern:ferry-steps", "actor": { "id": "test_demo", "source": "anonymous" } }'
    ```
 
-5. Restart `npx vite`. The table now shows that guest's one card, with the other two under Missing.
+5. Restart `npx vite`. The table now shows that person's one card, with the other two under Missing.
 
 ## Show the table to the person who signed in
 
-[Your first collect](/quickstart) ends with a server that knows who signed in. Serve the table from that server and hand it the session's person. It runs on `http://localhost:3000`, the address your sign-in client allows, so sign-in and the table share one cookie. Work in the `lantern-walk` folder, with the files above beside `server.mjs`.
+[Your first signed-in collect](/guides/signed-in-collect) ends with a server that knows who signed in. Serve the table from that server and hand it the session's person. It answers at your https address, the one your sign-in client allows, so sign-in and the table share one cookie. Work in the `lantern-walk` folder, with the files above beside `server.mjs`.
 
 1. Change `lantern-walk` to your app's id in `server/cards.js` and `src/tabletop.js`. If you registered a scratch set, change `old-town-lanterns` in both files too.
 2. Build the table into `dist`:
@@ -339,7 +341,7 @@ If you built [Your first collect](/quickstart), your key and set are already in 
    node server.mjs
    ```
 
-Sign in at http://localhost:3000, then open http://localhost:3000/table. The table shows the cards that person holds, with the rest of the set under Missing. The person comes from the session, so nothing sent from the browser can ask for someone else's cards. Anyone signed out who opens `/table` lands on `/`, where they can sign in.
+Sign in at your https address, then open `/table` on it. The table shows the cards that person holds, with the rest of the set under Missing. The person comes from the session, so nothing sent from the browser can ask for someone else's cards. Anyone signed out who opens `/table` lands on `/`, where they can sign in.
 
 Run `npx vite build` again after you change anything in `src`, and restart the server after you change anything in `server`.
 

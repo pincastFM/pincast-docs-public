@@ -1,21 +1,47 @@
 ---
 title: "Test and live"
-description: "Every key is live today. What that means while you build, and how to keep experiments out of sight."
+description: "What a test app can do, what changes when your app goes live, and how the two stay apart."
 ---
 
-Pincast has no test mode yet. Every key it issues is a live key, and everything a key writes is real. Keys are issued by hand: to ask for one, write to [support@pincast.fm](mailto:support@pincast.fm).
+Every Pincast app starts as a test app. Going live makes a second app beside it, with its own id and its own keys. Nothing copies from one to the other.
+
+| | Test app | Live app |
+| :- | :- | :- |
+| Id | Starts `test-`, such as `test-k3f7x2m4qa` | The live id you pick |
+| Writes for | Test people, whose ids start `test_` | Guests and people who signed in |
+| In the directory and on Placecard | Never | After Pincast's review |
+| Calls a UTC day | 2,000 | 50,000, or 200,000 once listed |
+
+## Test apps
+
+There are two ways to get one:
+
+- Run `npm create pincast`, or call [`POST /test-apps`](/api-reference/test-apps/make-a-test-app-with-no-account). Neither needs an account. The app ends after 7 days unless you claim it with its link. One source can make 2 of these every 10 minutes, and Pincast makes 200 a day across everyone.
+- Make one on the [dashboard](https://pincast.fm/developers/dashboard) with **New app**. It's yours from the start and has no end date.
+
+A test key reaches only its own test app, and it writes only for test people such as `test_demo`. They need no sign-in. A test key can't link a real person, so recording collects for people who signed in takes a live key. You can still try the sign-in itself on a test app, including from localhost.
+
+A test app holds 3 sets, 200 cards and 1,000 collects until it's claimed, then 20 sets, 2,000 cards and 20,000 collects. Its collects stay out of Placecard and the public numbers.
+
+To remove a test app and everything in it, open its **Overview** tab and tap **Delete this app**. Once the app has a live version, it can't be deleted there.
+
+## Going live
+
+On your app's **Go live** tab you pick a live id, give a contact email and ask for a review. That makes the live app and its first live key, which is shown once.
+
+The live app starts with no sets, so send them again with the live key. Your test app stays as it was. The live app isn't listed until Pincast approves it. The [Quickstart](/quickstart) has every step.
 
 ## What a live write means
 
-- No call deletes a set, a card or a collect. A card left out of a `PUT` is kept, and a retired card stays with the people who hold it.
-- `GET /sets/{set}` reports how many collects a set has and how many people made them, and the collects you send while you build are in those numbers.
-- Each key takes 600 calls a minute, and each call made with a key goes in the log Pincast keeps for 90 days.
+- No API call deletes a set, a card or a collect. A card left out of a `PUT` is kept, and a retired card stays with the people who hold it.
+- `GET /sets/{set}` reports how many collects a set has and how many people made them, and the collects you send with a live key are in those numbers.
+- Each key takes 600 calls a minute unless Pincast gave it a limit of its own, and each call made with a key goes in the log Pincast keeps for 90 days.
 
-## While you build
+## Trying things on a live key
 
 1. **Give experiments a set of their own.** Set ids are yours to choose, so write tries to a set such as `scratch-trees`, apart from the sets people play.
 2. **Keep that set off the lists.** Send `meta.listed` as `false` with it. The set then stays off the Placecard map, the front page and card pages for people who don't hold its cards. A new app's sets don't list at all until Pincast has reviewed the app, and `GET /sets/{set}` answers why a set doesn't list.
 3. **Collect as a guest.** A guest token your app makes for the test is enough: guest collects need no sign-in.
 4. **Make retries safe.** Send `at` with each collect, or an `Idempotency-Key` with each write. A collect with no `at` takes Placecard's clock, so a script that sends it twice counts it twice.
 
-To keep experiments under an app of their own, or to have something you wrote by mistake taken out, ask at [support@pincast.fm](mailto:support@pincast.fm).
+To have something you wrote by mistake taken out, ask at [support@pincast.fm](mailto:support@pincast.fm).

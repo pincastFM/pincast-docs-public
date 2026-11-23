@@ -16,9 +16,11 @@ Docs: https://docs.pincast.fm. The API reference, with every call: https://docs.
 - Call https://api.pincast.fm/v1 from the server only, with the app key in the `X-Pincast-Key` header.
 - Read the key from the environment (`PINCAST_KEY`). It reads `pck_`, the app id, `_`, then the secret.
 - Never put the key in browser code, an app bundle, a query string, a log or the repository.
-- Every key is live. There's no test mode, no test key, no API SDK and no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table. The API has seven calls today: six take the app key, and `GET /apps` is public. Check the reference before calling any other path.
+- A key is a test key or a live key. A test key reaches only its own test app and writes only for test people, whose ids start `test_`, such as `test_demo`. A live key writes real data.
+- To get a test key, run `npm create pincast`, call `POST /test-apps`, or make one on the dashboard at https://pincast.fm/developers/dashboard. A live key comes from taking the app live on the dashboard. Steps: https://docs.pincast.fm/quickstart.
+- There's no API SDK and no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table. The API has eight calls: six take the app key, `GET /apps` is public, and `POST /test-apps` needs no key or account. Check the reference before calling any other path.
 
-### The seven calls
+### The eight calls
 - `PUT /sets/{set}`: register a set and its cards, or update them. A card left out is kept.
 - `GET /sets/{set}`: read a set back, with whether it lists in Placecard.
 - `POST /sets/{set}/collects`: record that a person collected a card.
@@ -26,21 +28,23 @@ Docs: https://docs.pincast.fm. The API reference, with every call: https://docs.
 - `POST /sets/{set}/claims`: move a guest's cards to the person who just signed in.
 - `POST /people`: link a person who signed in, by their id.pincast.fm ID token.
 - `GET /apps`: the apps listed on Pincast. Public: no key, and a key sent is ignored.
+- `POST /test-apps`: make a test app and its key. No key or account. Each call makes a new app, so never send it again after a success.
 
 ### People
 - A guest: `actor.id` is the app's guest token for this device, `actor.source` is `anonymous`. Never use a guest token as a person's id.
 - After a person signs in through id.pincast.fm, send their ID token to `POST /people`. Use the `person` it answers as `actor.id` with `actor.source` `logto`, and as a claim's `to`.
 - A claim's `from` is the guest token the app read on this device, never a value taken from the request. Send one claim for each set.
+- Under a test key, every person is a test person: `actor.id` starts `test_`, and `POST /people` takes `{"testPerson": "test_demo"}` in place of a token and stores nothing.
 
 ### Errors
-- Checks run in this order, and the first to fail answers: the key (401, 403, or 400 for two different keys), the key's limit (429), the set id (400), the `Idempotency-Key` (400), the body (400), a signed-in person's link (403).
+- Checks run in this order, and the first to fail answers: the key (401, 403, or 400 for two different keys), the key's limit (429), the app's daily quota (429), whether this key may make this call (403), the set id (400), the `Idempotency-Key` (400), the body (400), `sets:write` for a collect that sends a whole card (403), under a test key that each person named is a test person (403), a signed-in person's link (403).
 - Every error has the same body. Branch on `data.code`, never on `message`. `data.field` names the field at fault, and `data.fix` says what to send instead.
-- Don't resend a 4xx unchanged: fix what `data.field` names first. A 403 `person_not_signed_in` means: send `POST /people`, then send the call again.
+- Don't resend a 4xx unchanged: fix what `data.field` names first. A 403 `person_not_signed_in` means: send `POST /people`, then send the call again. A 403 `test_person_required` means: use an id that starts `test_`. A 409 `test_limit_reached` means the test app is full: claim it or take it live.
 
 ### Retries and limits
-- Every call is safe to send again. On the three writes, send an `Idempotency-Key` header: a UUID made once per request and sent unchanged with each retry. A replayed answer comes with `Idempotent-Replayed: true`. The same key with a different request answers 422.
+- Every call that takes a key is safe to send again. On the three writes, send an `Idempotency-Key` header: a UUID made once per request and sent unchanged with each retry. A replayed answer comes with `Idempotent-Replayed: true`. The same key with a different request answers 422.
 - Send `at` with every collect. Without it, each resend is a new time and counts as another collect.
-- Each key takes 600 calls a minute. On 429 `rate_limited` or 503 `signin_check_unavailable`, wait the seconds in `Retry-After`, then send the same call once. A 500 is safe to send again later.
+- Each key takes 600 calls a minute, and the key from `POST /test-apps` takes 60. On 429 `rate_limited`, 429 `quota_exceeded` or 503 `signin_check_unavailable`, wait the seconds in `Retry-After`, then send the same call once. A 500 is safe to send again later.
 ```
 
 The section changes when the API does. When your agent hits a call or a field it doesn't know, the [API reference](/api-reference/introduction) has the current answer, and the [Errors](/api-reference/errors) page has every code.

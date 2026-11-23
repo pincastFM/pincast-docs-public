@@ -3,7 +3,7 @@ title: "Overview"
 description: "The address, your key, the order of checks, retries and limits for every Placecard call."
 ---
 
-The Placecard registry takes seven calls. Six go from your server with your app's key. The seventh, the list of apps on Pincast, is public and needs no key. Each call has its own page in this section, with a request and a response to copy. They're generated from the registry's API description, an OpenAPI 3.1 file that the registry's own tests check against the code, so the pages change when the code does.
+The Placecard registry takes eight calls. Six go from your server with your app's key. The seventh, the list of apps on Pincast, is public and needs no key. The eighth, `POST /test-apps`, needs no key or account: it makes a test app to try the others with. Each call has its own page in this section, with a request and a response to copy. They're generated from the registry's API description, an OpenAPI 3.1 file that the registry's own tests check against the code, so the pages change when the code does.
 
 ## Address and key
 
@@ -14,11 +14,11 @@ curl https://api.pincast.fm/v1/sets/central-park-trees \
   -H "X-Pincast-Key: $PINCAST_KEY"
 ```
 
-A key reads `pck_`, your app id, `_`, then a secret of 20 or more characters, each a letter, a digit, `_` or `-`. Keep it on your server: never in a web page, an app bundle or a query string. Placecard stores only its sha256.
+A key reads `pck_`, your app id, `_`, then a secret of 20 or more characters, each a letter, a digit, `_` or `-`. A newer key shows its kind right after the app id: `sk_` for secret, `rk_` for restricted. Keep it on your server: never in a web page, an app bundle or a query string. Placecard stores only its sha256.
 
-Pincast issues keys by hand. To ask for one, write to [support@pincast.fm](mailto:support@pincast.fm).
+For a test key with no account, call `POST /test-apps`. With an account, make test keys on your app's **Keys** tab on the [dashboard](https://pincast.fm/developers/dashboard), and get a live key by taking the app live. The [Quickstart](/quickstart) has the steps.
 
-Your app can hold two live keys at once, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry, seven days after the new key is made unless you ask for less. A revoked key is refused from the next call.
+Your app can hold two working keys at once, in test and in live each, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry, seven days after the new key is made unless you ask for less at [support@pincast.fm](mailto:support@pincast.fm). A revoked key is refused from the next call.
 
 The older address, `https://www.pincaster.com/api/placecard/v1`, and the header's older name, `X-Placecard-Key`, keep working, with the same calls and the same answers. Use api.pincast.fm for new work.
 
@@ -33,6 +33,38 @@ The older address, `https://www.pincaster.com/api/placecard/v1`, and the header'
 | [`POST /sets/{set}/claims`](/api-reference/claims/move-a-guests-cards-to-the-person-who-just-signed-in) | Move a guest's cards to the person who just signed in |
 | [`POST /people`](/api-reference/people/link-a-person-who-signed-in-to-your-app) | Link a person who signed in to your app |
 | [`GET /apps`](/api-reference/apps/list-the-apps-on-pincast) | List the apps on Pincast. Public: no key |
+| [`POST /test-apps`](/api-reference/test-apps/make-a-test-app-with-no-account) | Make a test app. No key or account |
+
+## What a key may do
+
+A secret key may make every call. A restricted key may make only the calls its abilities name:
+
+| Ability | Call |
+| :- | :- |
+| `sets:read` | `GET /sets/{set}` |
+| `sets:write` | `PUT /sets/{set}` |
+| `collects:read` | `GET /sets/{set}/collects` |
+| `collects:write` | `POST /sets/{set}/collects` |
+| `claims:write` | `POST /sets/{set}/claims` |
+| `people:write` | `POST /people` |
+
+A collect that sends a whole card creates or rewrites that card, so it needs `sets:write` as well.
+
+## Test keys
+
+A test key reaches only its own test app. It writes only for test people, whose ids start `test_`, such as `test_demo`. They need no sign-in link, and `POST /people` takes `testPerson` in place of `token`, answers with `simulated: true` and stores nothing.
+
+A test app holds this much:
+
+| | Before it's claimed | Once it's claimed |
+| :- | :- | :- |
+| Sets | 3 | 20 |
+| Cards | 200 | 2,000 |
+| Collects | 1,000 | 20,000 |
+
+Each person's hold of a card counts as one collect, and so does a parent card held through it. A write past the limit answers 409 `test_limit_reached` and writes nothing. A write that adds nothing always goes through, so an app at its limit can still update what it holds and resend a collect.
+
+The key from `POST /test-apps` ends with its app after 7 days. To keep both, open the `claim.url` from that answer while signed in to Pincast. The code works once, and the key then has no end date.
 
 ## Order of checks
 
@@ -40,22 +72,38 @@ Every call that takes a key runs its checks in this order and answers with the f
 
 1. The key: 400 when `X-Pincast-Key` and `X-Placecard-Key` both come and differ, 401 without one, 403 for a wrong, revoked, expired or disabled one.
 2. Your key's limit: 429.
-3. The set id: 400.
-4. The `Idempotency-Key`, when one is sent: 400.
-5. The body: 400.
-6. For a collect for a signed in person, and for a claim, that person's sign-in link: 403.
+3. Your app's daily quota: 429.
+4. Whether this key may make this call: 403.
+5. The set id: 400.
+6. The `Idempotency-Key`, when one is sent: 400.
+7. The body: 400.
+8. For a collect that sends a whole card, `sets:write`: 403.
+9. Under a test key, that each person named is a test person: 403.
+10. For a collect for a signed in person, and for a claim, that person's sign-in link: 403.
 
 Every error answers with the same JSON body: see [Errors](/api-reference/errors).
 
 ## Retries
 
-Every call is safe to send again. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an `Idempotency-Key` header: a string your app makes for one request, such as a UUID, sent again unchanged with each retry of that request.
+Every call that takes a key is safe to send again. `POST /test-apps` makes a new app each time, so send it again only after a failure. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an `Idempotency-Key` header: a string your app makes for one request, such as a UUID, sent again unchanged with each retry of that request.
 
 Placecard keeps the first 200 answer to that key for 24 hours, for your app only, and answers a retry with it, marked `Idempotent-Replayed: true`, without running the call again. The same key with a different request answers 422. A refused call keeps nothing, so its retry runs again.
 
 ## Limits
 
-Each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. Past it, a call answers 429 with a `Retry-After` header, the seconds to wait. A refused call doesn't count, so the call sent after the wait goes through.
+Each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. The key from `POST /test-apps` takes 60. Past that, a call answers 429 `rate_limited` with a `Retry-After` header, the seconds to wait. The refused call counts toward nothing, so the call sent after the wait goes through.
+
+Each app also has a quota of calls for the UTC day, counted across its keys:
+
+| App | Calls a day |
+| :- | :- |
+| Test app | 2,000 |
+| Live app, not listed | 50,000 |
+| Listed app | 200,000 |
+
+Pincast can set a different quota for one app. An app Pincast set up by hand, with no owner on the dashboard, has none. Past its quota, a call answers 429 `quota_exceeded` with a `Retry-After` header, the seconds to the next UTC midnight. That refused call adds nothing to the day, and it still takes a place in the key's minute. Any other call that gets past the key check counts toward both, whatever it answers.
+
+`POST /test-apps` has two limits of its own: 2 test apps every 10 minutes from one source, and 200 unclaimed test apps a day across everyone, counted over the last 24 hours. Past the 200, the call answers 429 `test_apps_limit` with a `Retry-After` header, the seconds to wait. Past the 2, Pincast's edge answers 429 with a body of its own and no `Retry-After` header. Try again in 10 minutes.
 
 ## Sign-in
 
@@ -63,7 +111,7 @@ When a person signs in to your app through id.pincast.fm, send their ID token to
 
 Guest collects need no link. A guest token is never a person's id: a guest collect for an id that holds cards in your app as a signed-in person answers 409.
 
-Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile. Pincast adds your app's id.pincast.fm application id when it issues your key, so tokens made for your app pass the check.
+Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile. Saving your app's sign-in client on the dashboard records its id.pincast.fm application id, so tokens made for your app pass the check.
 
 ## What Placecard logs
 

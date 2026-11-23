@@ -1,296 +1,204 @@
 ---
-title: "Your first collect"
-description: "From nothing to a real person's first collect in your app."
+title: "Quickstart"
+description: "From a new Pincast account to a working app on a test key, then on to the review queue."
 ---
 
-You'll build a one-file Node server for Lantern Walk, the small app from [Show the kit's card table](/guides/card-table). A person signs in with their Pincast account, taps a button and collects a card. The first person is you.
-
-<Warning>
-Every Pincast key is live, so the set and the collect you make here are real, and no call deletes them. The set stays off the Placecard map and front page for anyone who doesn't hold its cards.
-
-[Test and live](/concepts/test-and-live) advises a scratch set and a guest for experiments. This page signs a real person in, because sign-in is what it teaches. To keep the run apart from your app's real sets, use an id such as `scratch-lanterns` in place of `old-town-lanterns` in step 3 and in `server.mjs`.
-</Warning>
+You'll make an account, start a small card app on its own test key, record a test collect, claim the app and ask Pincast to review it. Until the last step, everything you write is test data, kept apart from anything public.
 
 ## What you need
 
-- Node 20.12 or later, and `curl`. The server installs no packages.
-- A Pincast account to sign in with. You can create one on the sign-in page.
-- A key and a sign-in client for your app, which the first step gets you.
+- Node 20.12 or later, and `curl`.
+- A browser, for your Pincast account and the dashboard.
 
-## 1. Ask for your key and sign-in client
+## 1. Make your account
 
-Pincast sets up each app by hand. Write to [support@pincast.fm](mailto:support@pincast.fm) with:
+Open the [developer dashboard](https://pincast.fm/developers/dashboard). If you're signed out, it sends you to the sign-in page, where you can create an account.
 
-- Your app's name, and the id you'd like: up to 32 lowercase letters, digits and hyphens.
-- The https addresses of its home page, logo, terms and privacy policy. People see the logo and links to both policies when they approve your app.
-- Its exact sign-in addresses, with no wildcards. For this page, include `http://localhost:3000/callback`.
+Signing in brings you back to the dashboard. It reads **No apps yet**. Your app appears here in step 4.
 
-Pincast registers your app on id.pincast.fm as a Traditional app, the kind that keeps its secret on your server, and sends you a private file with your key and client.
-
-## 2. Set up the folder
+## 2. Make your app with one command
 
 ```bash
-mkdir -p lantern-walk/data
-cd lantern-walk
+npm create pincast my-app
 ```
 
-Copy the values into a file named `.env`. The file you received calls your key `PLACECARD_APP_KEY`. Here it's `PINCAST_KEY`:
+The folder has to be new or empty. The command needs no account, and it does five things:
 
-```bash .env
-PINCAST_KEY=pck_your-app_your-secret
-PINCAST_SIGNIN_CLIENT_ID=your-client-id
-PINCAST_SIGNIN_CLIENT_SECRET=your-client-secret
-PINCAST_SIGNIN_ISSUER=https://id.pincast.fm/oidc
-PINCAST_API=https://api.pincast.fm/v1
+1. Copies a small starter app, Lantern Walk, into `my-app`.
+2. Asks Pincast for one test app.
+3. Writes the app's test key to `.env`, along with the test person `test_demo` and your claim link. Only your account can read that file, and git ignores it.
+4. Puts the new app's id in `shared/app.js`.
+5. Sends the starter's set and one test collect, so the app has a real card to show.
+
+It never prints the key. It does print the link that claims the app:
+
+```text wrap
+Your app is ready in my-app, with the test app test-k3f7x2m4qa.
+
+Its key is saved in my-app/.env. Only your account can read that file, and git ignores it.
+
+Pincast has your set, and the test person test_demo holds Ferry Steps.
+
+To keep this app past 2026-11-29, open this link while signed in to Pincast:
+
+  https://pincast.fm/developers/claim#code=pcc_...
 ```
 
-`PINCAST_API` is the address your server and the `curl` command call. The key and the client secret stay on your server. Keep `.env` out of git.
+A test app ends after 7 days unless you claim it. If you lose the link, it's in `.env` as `PINCAST_CLAIM_URL`.
 
-Save the set as `data/set.json`:
+## 3. Open your first card
 
-```json data/set.json
-{
-  "name": "Old Town",
-  "meta": { "face": "lantern", "listed": false },
-  "cards": [
-    {
-      "key": "lantern:ferry-steps",
-      "type": "lantern",
-      "title": "Ferry Steps",
-      "subtitle": "Harbor Road",
-      "fact": "Lit at dusk since 1889",
-      "rarity": "Common",
-      "url": "https://example.org/lanterns/ferry-steps",
-      "data": { "number": 1, "story": "Ferry crews trimmed its wick before the evening crossing." }
-    },
-    {
-      "key": "lantern:market-cross",
-      "type": "lantern",
-      "title": "Market Cross",
-      "subtitle": "Market Square",
-      "fact": "Four panes, one for each road",
-      "rarity": "Uncommon",
-      "url": "https://example.org/lanterns/market-cross",
-      "data": { "number": 2, "story": "Traders met under it to settle the day's accounts." }
-    },
-    {
-      "key": "lantern:harbor-light",
-      "type": "lantern",
-      "title": "Harbor Light",
-      "subtitle": "The Long Quay",
-      "fact": "Seen from two miles out",
-      "rarity": "Rare",
-      "url": "https://example.org/lanterns/harbor-light",
-      "data": { "number": 3, "story": "Boats still steer by it on foggy nights." }
-    }
-  ]
-}
-```
-
-## 3. Register the set
+The command registered the set's eight cards and recorded that the test person `test_demo` collected Ferry Steps. Install the app and start it:
 
 ```bash
+cd my-app
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173. The line at the top reads **Live from the Pincast API.** Ferry Steps is on the table, and the other seven cards are under the Missing chip.
+
+### If the command printed `curl` commands
+
+Your app is still made when the set or the collect doesn't go through. The command names the one Pincast didn't confirm and prints what's left to send. Run what it printed, from the folder where you ran it. Until the set arrives, the page shows this line in place of cards:
+
+```text wrap
+Set old-town-lanterns isn't registered for this app yet. Send it with PUT /v1/sets/old-town-lanterns first.
+```
+
+With both left to send, the commands are:
+
+```bash
+cd my-app
+npm ci
 set -a; . ./.env; set +a
-curl -X PUT "$PINCAST_API/sets/old-town-lanterns" \
+curl -X PUT https://api.pincast.fm/v1/sets/old-town-lanterns \
   -H "X-Pincast-Key: $PINCAST_KEY" \
   -H "Content-Type: application/json" \
   -d @data/set.json
+curl -X POST https://api.pincast.fm/v1/sets/old-town-lanterns/collects \
+  -H "X-Pincast-Key: $PINCAST_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{ "card": "lantern:ferry-steps", "actor": { "id": "test_demo", "source": "anonymous" } }'
+npm run dev
 ```
 
-It answers with what the call changed, under your app's id:
+You can send the `PUT` again at any time. Send this `POST` once: with no `at` in its body, each run counts as another collect.
 
-```json
-{
-  "app": "your-app",
-  "set": "old-town-lanterns",
-  "name": "Old Town",
-  "setCreated": true,
-  "cards": { "created": 3, "updated": 0, "unchanged": 0, "parentsSet": 0 },
-  "active": { "lantern": 3 }
-}
-```
+If only the collect is left, the command prints the `POST` alone with an `Idempotency-Key` line. That line makes a repeat safe for 24 hours, even if the first try reached Pincast and its answer got lost.
 
-## 4. Write the server
+## 4. Claim your app
 
-Save this as `server.mjs`:
+Open your claim link in a browser and tap **Claim this app**. If you're signed out, the page offers **Sign in to claim** and brings you back afterward.
 
-```js server.mjs
-import { createHash, randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
-import { createServer } from 'node:http'
+Your app opens on the dashboard. The claim changes three things:
 
-process.loadEnvFile('.env')
+- The app and its key stop expiring, so your `.env` keeps working.
+- The app's room grows from 3 sets, 200 cards and 1,000 collects to 20 sets, 2,000 cards and 20,000 collects.
+- You can take it live.
 
-const env = process.env
-const API = env.PINCAST_API || 'https://api.pincast.fm/v1'
-const ISSUER = env.PINCAST_SIGNIN_ISSUER
-const PORT = Number(env.PORT) || 3000
-const REDIRECT_URI = `http://localhost:${PORT}/callback`
-const SET_ID = 'old-town-lanterns'
-const CARD = 'lantern:ferry-steps'
+A claim link works once, and it ends when its test app does. One account holds up to 10 apps.
 
-// The API doesn't send a set's cards back, so the app keeps its own copy.
-const setCards = JSON.parse(readFileSync('data/set.json', 'utf8')).cards
-const titleOf = key => setCards.find(card => card.key === key)?.title ?? key
+## 5. Manage your test keys
 
-// One session per browser, held in memory. A real app keeps them in its own store.
-const sessions = new Map()
-const random = size => randomBytes(size).toString('base64url')
-const sidOf = req => /(?:^|;\s*)sid=([\w-]+)/.exec(req.headers.cookie ?? '')?.[1]
-const sessionOf = req => sessions.get(sidOf(req))
+Open your app's **Keys** tab. Under **Test keys** is the key the command made, named by its last four characters. Pincast stores only a hash of a key, so your `.env` holds the one whole copy.
 
-function openSession(res, data = {}) {
-  const sid = random(24)
-  sessions.set(sid, data)
-  // On https, add Secure to this cookie.
-  res.setHeader('Set-Cookie', `sid=${sid}; HttpOnly; SameSite=Lax; Path=/`)
-  return data
-}
+- **Make a test key** makes a second key and shows it once. Tap **Copy key**, store it, then tap **I saved this key**. An app holds two working test keys at most.
+- **Replace** gives you a new key, shown once, and keeps the old one working for 7 days.
+- **Revoke** stops a key from its next call.
 
-const escapeHtml = text => String(text).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+The key from the command takes 60 calls a minute, and so does a key that replaces it. A key you make with **Make a test key** takes 600.
 
-function send(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' })
-  res.end(`<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lantern Walk</title><body style="font: 16px/1.5 system-ui; max-width: 32rem; margin: 2rem auto; padding: 0 1rem">${body}`)
-}
-
-// Every Pincast call goes through here, from the server, with the key in a header.
-async function api(method, path, body) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { 'X-Pincast-Key': env.PINCAST_KEY, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(8000),
-  })
-  const answer = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(`${method} ${path} answered ${res.status}: ${answer?.data?.fix ?? answer?.message}`)
-  return answer
-}
-
-function startSignIn(req, res) {
-  const session = sessionOf(req) ?? openSession(res)
-  session.state = random(18)
-  session.verifier = random(32)
-  const url = new URL(`${ISSUER}/auth`)
-  url.search = new URLSearchParams({
-    client_id: env.PINCAST_SIGNIN_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    scope: 'openid offline_access profile',
-    state: session.state,
-    code_challenge: createHash('sha256').update(session.verifier).digest('base64url'),
-    code_challenge_method: 'S256',
-    prompt: 'consent',
-  })
-  res.writeHead(302, { Location: url.href }).end()
-}
-
-async function exchangeCode(code, verifier) {
-  const client = `${env.PINCAST_SIGNIN_CLIENT_ID}:${env.PINCAST_SIGNIN_CLIENT_SECRET}`
-  const res = await fetch(`${ISSUER}/token`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(client).toString('base64')}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier,
-    }),
-    signal: AbortSignal.timeout(8000),
-  })
-  const tokens = await res.json().catch(() => ({}))
-  if (!res.ok || !tokens.id_token) throw new Error(`The code exchange answered ${res.status}: ${tokens.error}`)
-  return tokens
-}
-
-async function finishSignIn(req, res, query) {
-  const session = sessionOf(req)
-  if (!session?.state || query.get('state') !== session.state) {
-    return send(res, 400, '<p>This sign-in has expired. <a href="/signin">Sign in again</a>.</p>')
-  }
-  const { verifier } = session
-  delete session.state
-  delete session.verifier
-  if (query.get('error')) return send(res, 200, '<p>You didn\'t sign in. <a href="/">Back</a>.</p>')
-
-  const tokens = await exchangeCode(query.get('code'), verifier)
-  // Once per sign-in: this links the person to your app, so your key can record their collects.
-  const { person } = await api('POST', '/people', { token: tokens.id_token })
-  const { username } = JSON.parse(Buffer.from(tokens.id_token.split('.')[1], 'base64url'))
-
-  // A new session id at sign-in, so an id set before it can't carry over.
-  sessions.delete(sidOf(req))
-  openSession(res, { person, name: username ?? person })
-  res.writeHead(303, { Location: '/' }).end()
-}
-
-async function home(req, res) {
-  const session = sessionOf(req)
-  if (!session?.person) return send(res, 200, '<p><a href="/signin">Sign in with Pincast</a></p>')
-  const actor = encodeURIComponent(session.person)
-  const { cards } = await api('GET', `/sets/${SET_ID}/collects?actor=${actor}`)
-  const held = cards.map(card => `<li>${escapeHtml(titleOf(card.key))}</li>`).join('')
-  send(res, 200, `<p>Signed in as ${escapeHtml(session.name)}.</p>
-<form method="post" action="/collect"><button>Collect ${escapeHtml(titleOf(CARD))}</button></form>
-<h2>Your cards</h2><ul>${held || '<li>None yet.</li>'}</ul>`)
-}
-
-async function collect(req, res) {
-  const session = sessionOf(req)
-  if (!session?.person) return res.writeHead(303, { Location: '/' }).end()
-  await api('POST', `/sets/${SET_ID}/collects`, {
-    card: CARD,
-    actor: { id: session.person, source: 'logto' },
-    at: new Date().toISOString(),
-  })
-  res.writeHead(303, { Location: '/' }).end()
-}
-
-createServer(async (req, res) => {
-  const url = new URL(req.url, `http://localhost:${PORT}`)
-  const route = `${req.method} ${url.pathname}`
-  try {
-    if (route === 'GET /') return await home(req, res)
-    if (route === 'GET /signin') return startSignIn(req, res)
-    if (route === 'GET /callback') return await finishSignIn(req, res, url.searchParams)
-    if (route === 'POST /collect') return await collect(req, res)
-    res.writeHead(404).end()
-  } catch (error) {
-    console.error(error.message)
-    send(res, 500, '<p>Something went wrong. The server\'s terminal says what.</p>')
-  }
-}).listen(PORT, 'localhost', () => console.log(`Lantern Walk: http://localhost:${PORT}`))
-```
-
-Four routes do the work:
-
-- `GET /signin` sends the person to id.pincast.fm with a one-time `state` and a PKCE challenge.
-- `GET /callback` exchanges the code for tokens, then sends the ID token to `POST /people`. That call links the person to your app and answers with their id.
-- `POST /collect` records the card under that id, with `actor.source` set to `logto`.
-- `GET /` reads what the person holds with `GET /sets/{set}/collects`.
-
-## 5. Sign in and collect
+To switch keys, change `PINCAST_KEY` in `.env`, load the file again and restart the app. The reload matters, because a value already in your shell wins over the file:
 
 ```bash
-node server.mjs
+set -a; . ./.env; set +a
+npm run dev
 ```
 
-Open http://localhost:3000. Use `localhost` rather than `127.0.0.1`, because your sign-in address and the session cookie both name it.
+## 6. Go live
 
-1. Tap **Sign in with Pincast** and sign in at id.pincast.fm.
-2. The consent screen names your app and asks for "Your name, username, avatar, and other profile info". Tap **Authorize**.
-3. Back in your app, tap **Collect Ferry Steps**.
+A live app is a second app with its own id and its own key. Your test app, test key and test data stay as they are, and nothing copies across.
 
-Ferry Steps appears under **Your cards**, read back from Placecard. That's your first collect.
+On your app's **Go live** tab:
 
-Each tap records one more collect, because the button sends a new time with each one. The card stays listed once, its `count` goes up, and no call takes a collect back.
+1. Enter a **Live id**: 1 to 32 lowercase letters, digits and hyphens, starting and ending with a letter or digit. It becomes part of your live key and can't change. It can't start with `test-`, and a few ids are reserved.
+2. Enter a **Contact email**, where Pincast writes about your review.
+3. Open the **Pincast developer terms**, read them, and tick the box to accept them. Pincast records who accepted, for which app, which version and when. If you're building for a company, you accept for it too.
+4. Tap **Go live and ask for review**.
+5. Your live key appears once. Tap **Copy key**, store it, then tap **I saved this key**.
+
+The tab now reads **Waiting for review**.
+
+If the tab says **Go live isn't open yet**, the terms aren't ready and no app can go live. Your test app and test key keep working. If it says **The developer terms have changed**, read the new version and tick the box again.
+
+### Move the starter to your live key
+
+A live key writes real data, and no API call deletes it. Your test set doesn't carry over, so send the set again:
+
+1. In `shared/app.js`, change `APP.id` to your live id.
+2. In `.env`, set `PINCAST_KEY` to your live key and `PINCAST_ACTOR` to `guest-lantern-1`, a guest id.
+3. Write the starter's test snapshots again, because they carry the app id:
+
+   ```bash
+   UPDATE_GOLDENS=1 npm test
+   ```
+
+4. Send the set and one guest collect with the live key:
+
+   ```bash
+   set -a; . ./.env; set +a
+   curl -X PUT https://api.pincast.fm/v1/sets/old-town-lanterns \
+     -H "X-Pincast-Key: $PINCAST_KEY" \
+     -H "Content-Type: application/json" \
+     -d @data/set.json
+   curl -X POST https://api.pincast.fm/v1/sets/old-town-lanterns/collects \
+     -H "X-Pincast-Key: $PINCAST_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{ "card": "lantern:ferry-steps", "actor": { "id": "guest-lantern-1", "source": "anonymous" } }'
+   ```
+
+5. Restart `npm run dev`. The page shows that guest's card, read through your live key.
+
+## Where your app stands
+
+Your app is in Pincast's review queue. Its live key works now, and its sets stay off the directory and Placecard until the review passes.
+
+The result shows on the app's **Overview** tab:
+
+- **Listed**: people can find your app in the Pincast directory.
+- **Review declined**: the reviewer's note appears there. Your live key keeps working. Make the changes, then tap **Ask for review again** on the **Go live** tab.
+
+[Appear in the directory and in Placecard](/guides/directory-and-placecard) lists what the review looks at.
+
+## Start from the dashboard instead
+
+You can make a test app without the command. On the dashboard, tap **New app**, enter an **App name** and tap **Make app**. The app is yours from the start, so it has no claim step and no end date. Open its **Keys** tab and tap **Make a test key**.
+
+To run the starter on that key:
+
+1. Run `npm create pincast my-app`, then `cd my-app` and `npm ci`. The command makes a test app of its own, which you can ignore: it ends after 7 days.
+2. Put your key in `PINCAST_KEY` in `.env`.
+3. Change `APP.id` in `shared/app.js` to your app's id, which starts `test-`.
+4. Run `UPDATE_GOLDENS=1 npm test`, then the `set -a`, `curl` and `npm run dev` lines from step 3.
+
+## When something goes wrong
+
+| What you see | What to do |
+| :- | :- |
+| `Set old-town-lanterns isn't registered for this app yet.` | Run the `PUT` in step 3 with this app's key. |
+| `This key is for the app ...` | `APP.id` in `shared/app.js` doesn't match the key. Change it to the part of your key between `pck_` and the next underscore. |
+| `Pincast has made all the test apps it makes in a day.` | The message says when to try again. |
+| `Too many test apps have come from this network.` | The message says when to try again. |
+| `... already has files in it` | Name a new or empty folder. |
+| 403 `test_person_required` | A test key's call named someone whose id doesn't start `test_`. Use `test_demo`. |
+| 409 `test_limit_reached` | The test app is full. Claim it, or take it live, for more room. |
+| **This claim link no longer works** | A code works once and ends with its test app. If you claimed the app already, it's on your dashboard. |
+
+[Errors](/api-reference/errors) lists every API code.
 
 ## Next
 
-- [Sign a person in](/guides/sign-in) explains each sign-in step and what your app receives.
-- [Show the kit's card table](/guides/card-table) draws these cards on a table people can sort and flip.
-- [Your app's collection and Placecard's](/concepts/collections) covers guests, and moving their cards when they sign in.
+- [Your first signed-in collect](/guides/signed-in-collect) signs a real person in to your live app.
+- [Show the kit's card table](/guides/card-table) explains the table the starter draws.
+- [Test and live](/concepts/test-and-live) covers how the two kinds of app stay apart.

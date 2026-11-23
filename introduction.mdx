@@ -3,10 +3,11 @@ title: "Introduction"
 description: "What Pincast gives developers today, and how to get a key."
 ---
 
-Pincast is a platform for real-world play. People walk to real places, and the apps built on Pincast give them a card for what they find there, such as a tree or a stop on a walk. Today the platform gives developers one API, the Placecard registry, at `https://api.pincast.fm/v1`. From your server, you register your app's card sets and cards, record each card a person collects, and read back what a person holds. People sign in through id.pincast.fm with one account for every Pincast app, and when a guest signs in, your app can move their cards to them. Pincast issues keys by hand: to ask for one, write to [support@pincast.fm](mailto:support@pincast.fm).
+Pincast is a platform for real-world play. People walk to real places, and the apps built on Pincast give them a card for what they find there, such as a tree or a stop on a walk. Today the platform gives developers one API, the Placecard registry, at `https://api.pincast.fm/v1`. From your server, you register your app's card sets and cards, record each card a person collects, and read back what a person holds. People sign in through id.pincast.fm with one account for every Pincast app, and when a guest signs in, your app can move their cards to them. To get a test key, run `npm create pincast`, which needs no account, or make an app on the [dashboard](https://pincast.fm/developers/dashboard).
 
 ## Where to go next
 
-- [Your first collect](/quickstart): from an empty folder to a signed-in person collecting a card in your app.
+- [Quickstart](/quickstart): from a new account to a working app on a test key, then on to the review queue.
+- [Your first signed-in collect](/guides/signed-in-collect): a real person signs in to your live app and collects a card.
 - [API reference](/api-reference/introduction): the address, your key, retries and limits, then every call with a request and a response to copy.
 - [Errors](/api-reference/errors): the one error body every call answers with, and what each code means.

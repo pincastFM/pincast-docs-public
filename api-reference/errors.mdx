@@ -51,7 +51,14 @@ A 500 means something failed on Placecard's side. Its message is `internal serve
 | `key_invalid` | 403 | The key has the wrong shape, is unknown, was revoked, or belongs to a disabled app. |
 | `key_expired` | 403 | The key is past its expiry. Send your app's newer key. |
 | `key_conflict` | 400 | `X-Pincast-Key` and `X-Placecard-Key` both came, with different keys. |
+| `key_ability_missing` | 403 | A restricted key doesn't name the ability this call needs. Send a key that does. |
+| `key_kind_refused` | 403 | This kind of key can't make this call. Send your secret or restricted key, from your server. |
 | `rate_limited` | 429 | Your key made as many calls in the last 60 seconds as its limit allows. Wait the seconds in `Retry-After`. |
+| `quota_exceeded` | 429 | Your app made all the calls its quota allows for the UTC day. Wait the seconds in `Retry-After`. |
+| `test_person_required` | 403 | A test key's call names a person whose id doesn't start `test_`, or sends a sign-in token. |
+| `test_limit_reached` | 409 | A test key's write would take its test app past the test limits. Nothing is written. |
+| `test_apps_limit` | 429 | Pincast has made all the test apps it makes in a day. Wait the seconds in `Retry-After`. |
+| `browser_not_allowed` | 403 | `POST /test-apps` came from a web page. Call it from your server or the command line. |
 | `set_id_invalid` | 400 | The set id breaks its rule: up to 64 characters, each a lowercase letter, a digit, `_` or `-`, starting with a letter or digit. |
 | `idempotency_key_invalid` | 400 | The `Idempotency-Key` isn't 1 to 255 visible ASCII characters with no spaces. |
 | `body_not_json` | 400 | The body isn't a JSON object. |

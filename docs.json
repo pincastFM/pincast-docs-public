@@ -58,6 +58,7 @@
       {
         "group": "Guides",
         "pages": [
+          "guides/signed-in-collect",
           "guides/sign-in",
           "guides/sets-and-cards",
           "guides/card-table",
@@ -109,6 +110,12 @@
             "group": "Apps",
             "pages": [
               "GET /apps"
+            ]
+          },
+          {
+            "group": "Test apps",
+            "pages": [
+              "POST /test-apps"
             ]
           }
         ]

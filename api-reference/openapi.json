@@ -4,7 +4,7 @@
     "title": "Placecard registry",
     "version": "1.0.0",
     "summary": "Register your app's cards with Placecard and record what people collect.",
-    "description": "Seven calls. Six go from your server with your app key: register a card set and its cards, record a collect, read what one person holds, link a person when they sign in to your app, move a guest's cards to them, and read a set back. The seventh, the list of apps on Pincast, is public and needs no key.\n\nAddresses: call https://api.pincast.fm/v1 with your key in the X-Pincast-Key header. The older address, https://www.pincaster.com/api/placecard/v1, and the header's older name, X-Placecard-Key, keep working: the same calls and the same answers, except that a key error at the older address names X-Placecard-Key.\n\nChecks run in this order on every call that takes a key: the key first (400 when X-Pincast-Key and X-Placecard-Key both come and differ, 401 without one, 403 for a wrong, revoked, expired or disabled one), then your key's limit (429), then the set id (400), then the Idempotency-Key when one is sent (400), then the body (400), then, for a collect for a signed in person and for a claim, that person's sign-in link (403). Every error answers with the same JSON body: see the Error schema. On a 4xx its data says what to do: a code to branch on, the field at fault when there is one, and a fix in one sentence.\n\nRetries: every call is safe to send again, and each write says how. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an Idempotency-Key header: Placecard keeps the first 200 answer to that key for 24 hours and answers a retry with it, marked Idempotent-Replayed: true, without running the call again.\n\nSign-in: when a person signs in to your app through id.pincast.fm, send their ID token to POST /people once. Placecard checks it with id.pincast.fm and links the person to your app. From then on your key can record collects (actor.source logto) and claims (to) for that person, and for nobody who has not signed in to your app: those calls answer 403. Guest collects need no link, and a guest token is never a person's id: a guest collect for an id that holds cards in your app as a signed-in person answers 409. Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile.\n\nLimits: each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. Past it, a call answers 429 with a Retry-After header, the seconds to wait. A refused call does not count, so the call sent after the wait goes through. Placecard logs each call made with your key (its time, method, path without the query string, key and answer, never the body) and keeps the log 90 days. The list of apps has no limit of its own and logs nothing: its answer is the same for everyone, and the edge keeps it 5 minutes.\n\nThis file describes the registry as it runs today. The tests in tests/placecardApiV1.test.js send every example here to the real handlers and fail when an answer and this file disagree."
+    "description": "Eight calls. Six go from your server with your app key: register a card set and its cards, record a collect, read what one person holds, link a person when they sign in to your app, move a guest's cards to them, and read a set back. The seventh, the list of apps on Pincast, is public and needs no key. The eighth, POST /test-apps, needs no key or account either: it makes a test app to try these calls with, and is the one call the older address doesn't take.\n\nAddresses: call https://api.pincast.fm/v1 with your key in the X-Pincast-Key header. The older address, https://www.pincaster.com/api/placecard/v1, and the header's older name, X-Placecard-Key, keep working: the same calls and the same answers, except that a key error at the older address names X-Placecard-Key.\n\nChecks run in this order on every call that takes a key: the key first (400 when X-Pincast-Key and X-Placecard-Key both come and differ, 401 without one, 403 for a wrong, revoked, expired or disabled one), then your key's limit (429), then your app's daily quota (429), then whether this key may make this call (403), then the set id (400), then the Idempotency-Key when one is sent (400), then the body (400). Three more checks follow the body, each a 403: a collect that sends a whole card needs sets:write, a test key's call must name a test person, and a collect for a signed in person or a claim needs that person's sign-in link. Every error answers with the same JSON body: see the Error schema. On a 4xx its data says what to do: a code to branch on, the field at fault when there is one, and a fix in one sentence.\n\nRetries: every call that takes a key is safe to send again, and each write says how. POST /test-apps makes a new app each time, so send it again only after a failure. For the three writes (PUT a set, POST a collect, POST a claim) you can also send an Idempotency-Key header: Placecard keeps the first 200 answer to that key for 24 hours and answers a retry with it, marked Idempotent-Replayed: true, without running the call again.\n\nSign-in: when a person signs in to your app through id.pincast.fm, send their ID token to POST /people once. Placecard checks it with id.pincast.fm and links the person to your app. From then on your key can record collects (actor.source logto) and claims (to) for that person, and for nobody who hasn't signed in to your app: those calls answer 403. Guest collects need no link, and a guest token is never a person's id: a guest collect for an id that holds cards in your app as a signed-in person answers 409. Placecard reads only the token's issuer, subject, audience and times, and keeps none of the person's profile.\n\nKeys: a secret key may make every call. A restricted key may make only the calls its abilities name: sets:read for GET /sets/{set}, sets:write for PUT /sets/{set}, collects:read for GET /sets/{set}/collects, collects:write for POST /sets/{set}/collects, claims:write for POST /sets/{set}/claims and people:write for POST /people. A collect that sends a whole card creates or rewrites that card, so it needs sets:write too.\n\nTest keys: a test key reaches only its own test app and writes only for test people, whose ids start test_. Test people need no sign-in link, and POST /people takes testPerson in place of token and stores nothing. A test app holds at most 3 sets, 200 cards and 1,000 collects until someone claims it, then 20 sets, 2,000 cards and 20,000 collects. Each person's hold of a card counts as one collect, and so does a parent card held through it. A write past those limits answers 409 test_limit_reached. A write that adds nothing always goes through, so an app at its limit can still update what it holds and resend a collect.\n\nLimits: each key takes 600 calls a minute, counted over the last 60 seconds, unless Pincast gave it a limit of its own. The key POST /test-apps makes takes 60. Past that, a call answers 429 rate_limited with a Retry-After header, the seconds to wait, and the refused call counts toward nothing, so the call sent after the wait goes through.\n\nEach app also has a quota of calls for the UTC day, counted across its keys: 2,000 for a test app, 50,000 for a live app that isn't listed and 200,000 for a listed app, unless Pincast set one of its own. An app Pincast set up by hand, with no owner on the dashboard, has no quota. Past its quota, a call answers 429 quota_exceeded with a Retry-After header, the seconds to the next UTC midnight. That refused call adds nothing to the day, and it still takes a place in the key's minute. Any other call that gets past the key check counts toward both, whatever it answers.\n\nPlacecard logs each call made with your key (its time, method, path without the query string, key and answer, never the body) and keeps the log 90 days. The list of apps has no limit of its own and logs nothing: its answer is the same for everyone, and the edge keeps it 5 minutes.\n\nThis file describes the registry as it runs today. The tests in tests/placecardApiV1.test.js send every example here to the real handlers and fail when an answer and this file disagree."
   },
   "servers": [
     {
@@ -24,7 +24,8 @@
     { "name": "Collects", "description": "What people collect, and what they hold." },
     { "name": "Claims", "description": "A guest's cards, moved to them when they sign in." },
     { "name": "People", "description": "The people who signed in to your app." },
-    { "name": "Apps", "description": "The apps listed on Pincast." }
+    { "name": "Apps", "description": "The apps listed on Pincast." },
+    { "name": "Test apps", "description": "A test app with no account, to try the API before you sign up." }
   ],
   "paths": {
     "/sets/{set}": {
@@ -35,7 +36,7 @@
         "operationId": "putSet",
         "tags": ["Sets"],
         "summary": "Register a card set, or update it and its cards",
-        "description": "Creates the set the first time and updates its name and meta after that. Cards are matched by key: a new key adds a card, a known key updates it, and a card you leave out of the call is kept as it is (send it with status retired to retire it). A card's parent may be in the same call or already registered. The whole call is one transaction: one bad card fails the call and nothing is written. Safe to send again: an unchanged card counts as unchanged and is not touched. With an Idempotency-Key, a retry answers the first answer (setCreated true, the first counts) and writes nothing.",
+        "description": "Creates the set the first time and updates its name and meta after that. Cards are matched by key: a new key adds a card, a known key updates it, and a card you leave out of the call is kept as it is (send it with status retired to retire it). A card's parent may be in the same call or already registered. The whole call is one transaction: one bad card fails the call and nothing is written. Safe to send again: an unchanged card counts as unchanged and isn't touched. With an Idempotency-Key, a retry answers the first answer (setCreated true, the first counts) and writes nothing.\n\nA restricted key needs sets:write. Under a test key, a write past the test limits answers 409 and writes nothing.",
         "security": [{ "pincastKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/IdempotencyKey" }
@@ -112,6 +113,10 @@
           },
           "401": { "$ref": "#/components/responses/KeyMissing" },
           "403": { "$ref": "#/components/responses/KeyRefused" },
+          "409": {
+            "description": "A test key's write would take its test app past the test limits. Nothing is written. Message: Test limit reached.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
+          },
           "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
           "429": { "$ref": "#/components/responses/RateLimited" },
           "default": { "$ref": "#/components/responses/ServerError" }
@@ -121,7 +126,7 @@
         "operationId": "getSet",
         "tags": ["Sets"],
         "summary": "Read a set back",
-        "description": "The set as Placecard holds it: its name and meta, its active cards by type, how many collects it has and how many people made them, and whether it lists. An app reads only its own sets.",
+        "description": "The set as Placecard holds it: its name and meta, its active cards by type, how many collects it has and how many people made them, and whether it lists. An app reads only its own sets. A restricted key needs sets:read.",
         "security": [{ "pincastKey": [] }],
         "responses": {
           "200": {
@@ -167,7 +172,7 @@
         "operationId": "postCollect",
         "tags": ["Collects"],
         "summary": "Record that a person collected a card",
-        "description": "Send the card's key, or the whole card to register or update it first. The actor is the person as your app knows them: a Logto id once they have signed in and your app has sent their sign-in token with POST /people, or your app's guest token for this device before that. The card's parent (a tree card's species card) is held through it and recorded with it.\n\nSafe to send again until you hear back: a collect with the same card, actor and time changes nothing and answers as the first send did, first included. A later time counts one more collect; an earlier time moves the first collect back. A collect sent without at takes Placecard's clock, so each send of it is a new time: send it with an Idempotency-Key to retry it safely.",
+        "description": "Send the card's key, or the whole card to register or update it first. The actor is the person as your app knows them: a Logto id once they have signed in and your app has sent their sign-in token with POST /people, or your app's guest token for this device before that. The card's parent (a tree card's species card) is held through it and recorded with it.\n\nSafe to send again until you hear back: a collect with the same card, actor and time changes nothing and answers as the first send did, first included. A later time counts one more collect; an earlier time moves the first collect back. A collect sent without at takes Placecard's clock, so each send of it is a new time: send it with an Idempotency-Key to retry it safely.\n\nA restricted key needs collects:write, and sets:write as well when you send the whole card. Under a test key, actor.id must start test_, no sign-in link is needed, and a write past the test limits answers 409 and writes nothing.",
         "security": [{ "pincastKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/IdempotencyKey" }
@@ -228,7 +233,7 @@
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           },
           "409": {
-            "description": "The card is retired and takes no new collects. People who hold it keep it. Message: Card <key> is retired. Or the collect is a guest's (actor.source anonymous) for an id that holds cards in your app as a signed-in person: a guest write never lands on a person's cards. Message: Actor holds cards as a signed-in person.",
+            "description": "The card is retired and takes no new collects. People who hold it keep it. Message: Card <key> is retired. Or the collect is a guest's (actor.source anonymous) for an id that holds cards in your app as a signed-in person: a guest write never lands on a person's cards. Message: Actor holds cards as a signed-in person. Or a test key's write would take its test app past the test limits. Message: Test limit reached.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           },
           "422": { "$ref": "#/components/responses/IdempotencyKeyReused" },
@@ -240,7 +245,7 @@
         "operationId": "getCollects",
         "tags": ["Collects"],
         "summary": "Read what a person holds in this set",
-        "description": "One person's cards in this set, first collect first (cards collected at the same moment in key order). Send up to three actor ids for the same person, a Logto id with this device's guest token for example: a card held under more than one is listed once, at its earliest collect. A guest's cards that have been claimed are listed under the person who claimed them.",
+        "description": "One person's cards in this set, first collect first (cards collected at the same moment in key order). Send up to three actor ids for the same person, a Logto id with this device's guest token for example: a card held under more than one is listed once, at its earliest collect. A guest's cards that have been claimed are listed under the person who claimed them. A restricted key needs collects:read.",
         "security": [{ "pincastKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/Actor" }
@@ -305,7 +310,7 @@
         "operationId": "postClaim",
         "tags": ["Claims"],
         "summary": "Move a guest's cards to the person who just signed in",
-        "description": "Your app vouches for both ids: it has signed the person in (to) and sent their sign-in token with POST /people, and it read this device's guest token itself (from), never from what the person sent. Only cards collected as a guest move. A card the person already holds is merged into theirs (the earlier first collect, the later last collect, the counts added) and the guest's copy is kept, marked as claimed.\n\nSafe to send again until you hear back: a claim with nothing left to move answers claimed 0. With an Idempotency-Key, a retry answers the first answer instead (claimed 2, say).",
+        "description": "Your app vouches for both ids: it has signed the person in (to) and sent their sign-in token with POST /people, and it read this device's guest token itself (from), never from what the person sent. Only cards collected as a guest move. A card the person already holds is merged into theirs (the earlier first collect, the later last collect, the counts added) and the guest's copy is kept, marked as claimed.\n\nSafe to send again until you hear back: a claim with nothing left to move answers claimed 0. With an Idempotency-Key, a retry answers the first answer instead (claimed 2, say).\n\nA restricted key needs claims:write. Under a test key, from and to must both start test_, and no sign-in link is needed. A claim adds no row, so the test limits don't apply to it.",
         "security": [{ "pincastKey": [] }],
         "parameters": [
           { "$ref": "#/components/parameters/IdempotencyKey" }
@@ -359,7 +364,7 @@
         "operationId": "postPerson",
         "tags": ["People"],
         "summary": "Link a person who signed in to your app",
-        "description": "Send the person's ID token, exactly as id.pincast.fm gave it to your app when they signed in. Placecard checks its signature against id.pincast.fm's public keys, its issuer, its times, and that it was made for one of your app's sign-in clients (Pincast adds your id.pincast.fm application id when it gives you your key). Then it links the person (the token's subject) to your app, and your key can record collects and claims for them.\n\nSafe to send again: a token for a person already linked answers the same link. Send it at each sign-in if that is simpler for your app.",
+        "description": "Send the person's ID token, exactly as id.pincast.fm gave it to your app when they signed in. Placecard checks its signature against id.pincast.fm's public keys, its issuer, its times, and that it was made for one of your app's sign-in clients (Pincast adds your id.pincast.fm application id when it gives you your key). Then it links the person (the token's subject) to your app, and your key can record collects and claims for them.\n\nSafe to send again: a token for a person already linked answers the same link. Send it at each sign-in if that is simpler for your app.\n\nUnder a test key, send testPerson in place of token, with an id that starts test_. The answer has the same shape with simulated: true, linkedAt is the time of the call, and nothing is stored. A test key can't link a real person: a call that sends token under a test key is refused.\n\nA restricted key needs people:write.",
         "security": [{ "pincastKey": [] }],
         "requestBody": {
           "required": true,
@@ -370,6 +375,10 @@
                 "story": {
                   "summary": "The guest signs in, and your app sends their sign-in token",
                   "value": { "token": "eyJhbGciOiJFUzM4NCIsInR5cCI6IkpXVCIsImtpZCI6InN0b3J5LWtleSJ9.eyJpc3MiOiJodHRwczovL2lkLnBpbmNhc3QuZm0vb2lkYyIsInN1YiI6InE4bjJ2NXg3YzF6NCIsImF1ZCI6ImRlbW9hcHBzaWduaW4wY2xpZW50MSIsImV4cCI6NDA3MDkwODgwMCwiaWF0IjoxNzk0NjY5MDAwfQ.868gLKGOj3abQ4a2LfkoSd5LOEBwhTVrXZxHz9UKfaJPeidE3zIvbZIqNHRv4zytmC3xqxpxswUC1KP0IdeFDpB32uTi8JQXUHsqgtuK1OVU3blC0Ki8xCCkAqpsUHty" }
+                },
+                "testKey": {
+                  "summary": "Under a test key, a test person in place of a token",
+                  "value": { "testPerson": "test_demo" }
                 }
               }
             }
@@ -377,21 +386,24 @@
         },
         "responses": {
           "200": {
-            "description": "The person is linked to your app. linkedAt is when the link was first made, so a resend answers the same.",
+            "description": "The person is linked to your app. linkedAt is when the link was first made, so a resend answers the same. Under a test key nothing is stored: the answer carries simulated: true, and linkedAt is the time of the call.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/PersonResponse" },
-                "examples": { "story": { "value": { "app": "demo", "person": "q8n2v5x7c1z4", "linkedAt": "2026-11-14T15:10:01.000Z" } } }
+                "examples": {
+                  "story": { "value": { "app": "demo", "person": "q8n2v5x7c1z4", "linkedAt": "2026-11-14T15:10:01.000Z" } },
+                  "testKey": { "value": { "app": "test-abcdefghij", "person": "test_demo", "linkedAt": "2026-11-14T15:10:01.000Z", "simulated": true } }
+                }
               }
             }
           },
           "400": {
-            "description": "The body or the token breaks a rule. Messages: JSON body required; token required; Invalid sign-in token, when it is not a token id.pincast.fm signed for your app (its data.fix says which check failed); Sign-in token expired, when its exp has passed: send a fresh one.",
+            "description": "The body or the token breaks a rule. Messages: JSON body required; token required; Invalid sign-in token, when it is not a token id.pincast.fm signed for your app (its data.fix says which check failed); Sign-in token expired, when its exp has passed: send a fresh one; testPerson required, when a test key's call has no testPerson.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           },
           "401": { "$ref": "#/components/responses/KeyMissing" },
           "403": {
-            "description": "The key is refused, or the token was made for another app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Sign-in token is for another app, when its audience names none of your app's sign-in clients.",
+            "description": "The key is refused, or the token was made for another app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Key lacks this ability, when a restricted key does not name the ability this call needs: send a key that does. Message: Key kind refused, when this kind of key cannot make this call. Message: Sign-in token is for another app, when its audience names none of your app's sign-in clients. Message: Test person required, when a test key sends token, or a testPerson that does not start test_.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
           },
           "429": { "$ref": "#/components/responses/RateLimited" },
@@ -405,7 +417,7 @@
         "operationId": "getApps",
         "tags": ["Apps"],
         "summary": "List the apps on Pincast",
-        "description": "Every app Pincast lists, with cards on Placecard or without: the featured app first while its slot runs, then every app by name. An app joins the list once Pincast has reviewed it, and leaves it when Pincast hides it or disables it. Pincast sets each app's description, icon, category, color and featured slot at the review.\n\nPublic: no key needed, and a key sent is ignored (never checked, counted or logged), so a web page may call it too. The answer is the same for everyone: the edge keeps it 5 minutes, and may give a copy up to a day old while it fetches a fresh one. Every text field is plain text: escape it before you put it in a page.",
+        "description": "Every app Pincast lists, with cards on Placecard or without: the featured app first while its slot runs, then every app by name. An app joins the list once Pincast has reviewed it, and leaves it when Pincast hides it or disables it. Pincast sets each app's description, icon, category, color and featured slot at the review.\n\nPublic: no key needed, and a key sent is ignored (never checked, counted or logged), so a web page may call it too. The answer is the same for everyone: the edge keeps it 5 minutes, and may give a copy up to a day old while it fetches a fresh one. Every text field is plain text: escape it before you put it in a page. A HEAD request answers the same status and headers with no body.",
         "security": [],
         "responses": {
           "200": {
@@ -433,6 +445,118 @@
           "default": { "$ref": "#/components/responses/ServerError" }
         }
       }
+    },
+    "/test-apps": {
+      "servers": [
+        {
+          "url": "https://api.pincast.fm/v1",
+          "description": "The Pincast address. This call runs here only."
+        }
+      ],
+      "post": {
+        "operationId": "postTestApp",
+        "tags": [
+          "Test apps"
+        ],
+        "summary": "Make a test app with no account",
+        "description": "Makes a test app and answers with a restricted test key and a one-time claim code. No account and no key. Send it from your server or the command line: a call from a web page is refused. Send no body, or a JSON body with Content-Type: application/json.\n\nThe key holds all six abilities and works on the six keyed calls, for this test app only and for test people only (ids that start test_), up to 60 calls a minute and 2,000 calls a day. The app holds at most 3 sets, 200 cards and 1,000 collects. The app and its key end after 7 days unless someone claims the app. To keep it, open the claim url while signed in to Pincast: the code works once, the key then keeps working with no end date, and the app can hold 20 sets, 2,000 cards and 20,000 collects. The key and the code are shown only in this answer, and Pincast stores only their hashes, so keep them safe.\n\nA test app is never listed and never counts toward anything public. Pincast's database keeps no address or other detail of who called. It takes calls at https://api.pincast.fm/v1 only: at the older address this path answers 404, with no data. Pincast limits how many test apps one source can make, and how many it makes in a day. Each call makes a new app, so this call isn't one to send again after a success.",
+        "security": [],
+        "requestBody": {
+          "required": false,
+          "description": "Optional. With no body, the app is named Test app.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestAppRequest"
+              },
+              "examples": {
+                "named": {
+                  "summary": "A test app with a name.",
+                  "value": {
+                    "name": "Bird log"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The test app, its key and its claim code.",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/NoStore"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestAppResponse"
+                },
+                "examples": {
+                  "named": {
+                    "summary": "A new test app. The key and code here are made up.",
+                    "value": {
+                      "app": {
+                        "id": "test-k3f7x2m4qa",
+                        "name": "Bird log",
+                        "mode": "test",
+                        "expiresAt": "2026-11-29T15:04:05.123Z"
+                      },
+                      "key": "pck_test-k3f7x2m4qa_rk_Ex4mpleKeyNotRealEx4mpleKeyNotRealEx4mpleKe",
+                      "keyId": "key_0123456789ab",
+                      "claim": {
+                        "code": "pcc_Ex4mpleCodeNotRealEx4mpleCodeNotRealEx4mple",
+                        "url": "https://pincast.fm/developers/claim#code=pcc_Ex4mpleCodeNotRealEx4mpleCodeNotRealEx4mple",
+                        "expiresAt": "2026-11-29T15:04:05.123Z"
+                      },
+                      "api": "https://api.pincast.fm/v1"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Messages: JSON body required, when a body comes without Content-Type application/json, isn't a JSON object or runs past 2,048 bytes; name required, when name is blank; name must be text. A field other than name is refused, and so is a name past 80 characters or one holding control characters, line separators or characters that reorder text: each answers field_invalid and names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The call came from a web page (it carries an Origin header). Message: Browser calls are not allowed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Pincast has made all the test apps it makes in a day. Wait the seconds in the Retry-After header. Pincast's edge can also answer 429 when one source makes too many, with a body of its own.",
+            "headers": {
+              "Retry-After": {
+                "$ref": "#/components/headers/TestAppsRetryAfter"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -441,7 +565,7 @@
         "type": "apiKey",
         "in": "header",
         "name": "X-Pincast-Key",
-        "description": "Your app's key, sent on every call from your server only. It reads pck_, your app id, an underscore, then a secret of 20 or more letters, digits, underscores or hyphens. Never put it in a web page, an app bundle or a query string. Placecard stores only its sha256.\n\nYour app can hold two live keys at once, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry (seven days after the new key is made, unless you ask for less). A revoked key is refused from the next call.\n\nX-Placecard-Key, the older name of this header, is taken too, at either address. Send one of the two; if both come and they differ, the call answers 400 key_conflict."
+        "description": "Your app's key, sent on every call from your server only. It reads pck_, your app id, an underscore, then a secret of 20 or more letters, digits, underscores or hyphens. Never put it in a web page, an app bundle or a query string. Placecard stores only its sha256.\n\nA secret key may make every call. A restricted key may make only the calls its abilities name, and each call's page names the one it needs. A newer key shows its kind right after your app id, sk_ for secret and rk_ for restricted, so you and a leak scanner can tell them apart. An older key has no mark and works as a secret key.\n\nYour app can hold two working keys at once, in test and in live each, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry (seven days after the new key is made, unless you ask for less). A revoked key is refused from the next call.\n\nX-Placecard-Key, the older name of this header, is taken too, at either address. Send one of the two; if both come and they differ, the call answers 400 key_conflict."
       }
     },
     "parameters": {
@@ -486,9 +610,21 @@
         "description": "The seconds to wait before you send the call again, from 1 to 60.",
         "schema": { "type": "integer", "minimum": 1, "maximum": 60 }
       },
+      "LimitRetryAfter": {
+        "description": "The seconds to wait before you send the call again: from 1 to 60 past the minute limit, and up to 86400, the seconds to the next UTC midnight, past the daily quota.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 86400 }
+      },
       "AppsCacheControl": {
         "description": "The edge keeps the list 5 minutes, and may give a copy up to a day old while it fetches a fresh one.",
         "schema": { "type": "string", "const": "public, s-maxage=300, stale-while-revalidate=86400" }
+      },
+      "NoStore": {
+        "description": "The answer holds a key, so nothing may keep it.",
+        "schema": { "type": "string", "const": "no-store" }
+      },
+      "TestAppsRetryAfter": {
+        "description": "The seconds until Pincast can make another test app, from 1 to 86400.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 86400 }
       },
       "AnyOrigin": {
         "description": "Any web page may read the list.",
@@ -501,7 +637,7 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "KeyRefused": {
-        "description": "The key is refused. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key.",
+        "description": "The key is refused. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Key lacks this ability, when a restricted key does not name the ability this call needs: send a key that does. Message: Key kind refused, when this kind of key cannot make this call.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "SetMissing": {
@@ -513,12 +649,12 @@
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "RateLimited": {
-        "description": "Your key made as many calls in the last 60 seconds as its limit allows: 600 unless Pincast gave it a limit of its own. Message: Too many requests. Wait the seconds in Retry-After, then send the call again; a refused call does not count.",
-        "headers": { "Retry-After": { "$ref": "#/components/headers/RetryAfter" } },
+        "description": "Your key made as many calls in the last 60 seconds as its limit allows: 600 unless Pincast gave it a limit of its own, and 60 for the key POST /test-apps makes. Message: Too many requests. Or your app made all the calls its daily quota allows, counted across its keys for the UTC day: 2,000 for a test app, 50,000 for a live app that isn't listed, 200,000 for a listed app, unless Pincast set a quota of its own. Message: Daily call quota reached. Either way, wait the seconds in Retry-After, then send the call again. A call refused at the minute limit counts toward nothing. A call refused at the quota adds nothing to the day, and it still takes a place in the key's minute.",
+        "headers": { "Retry-After": { "$ref": "#/components/headers/LimitRetryAfter" } },
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "WriteRefused": {
-        "description": "The key is refused, or the person is not signed in to your app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Person not signed in to this app, when the call is for a signed in person your app has not sent a sign-in token for: send it with POST /people, then send this call again.",
+        "description": "The key is refused, or the person is not signed in to your app. Message: Invalid key, when it has the wrong shape, is unknown, was revoked or belongs to a disabled app. Message: Key expired, when it is past its expiry: use your app's newer key. Message: Key lacks this ability, when a restricted key does not name the ability this call needs: send a key that does. Message: Key kind refused, when this kind of key cannot make this call. Message: Person not signed in to this app, when the call is for a signed in person your app has not sent a sign-in token for: send it with POST /people, then send this call again. Message: Test person required, when a test key's call names a person whose id does not start test_: send a test person, such as test_demo.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } }
       },
       "SignInCheckUnavailable": {
@@ -554,10 +690,10 @@
         "properties": {
           "code": {
             "type": "string",
-            "enum": ["key_missing", "key_invalid", "key_expired", "key_conflict", "rate_limited", "set_id_invalid", "idempotency_key_invalid", "body_not_json", "field_required", "field_invalid", "too_many_cards", "duplicate_card_key", "parent_not_registered", "too_many_actors", "same_player", "set_not_registered", "card_not_registered", "card_retired", "actor_signed_in", "idempotency_key_reused", "token_invalid", "token_expired", "token_other_app", "person_not_signed_in", "signin_check_unavailable"],
-            "description": "Each code with the status it comes with: key_missing 401, key_invalid 403, key_expired 403, key_conflict 400, rate_limited 429, set_id_invalid 400, idempotency_key_invalid 400, body_not_json 400, field_required 400, field_invalid 400, too_many_cards 400, duplicate_card_key 400, parent_not_registered 400, too_many_actors 400, same_player 400, set_not_registered 404, card_not_registered 404, card_retired 409, actor_signed_in 409, idempotency_key_reused 422, token_invalid 400, token_expired 400, token_other_app 403, person_not_signed_in 403, signin_check_unavailable 503. field_required is a field left out or blank; field_invalid is one sent with the wrong type, shape, length or range. key_conflict is a call that sent X-Pincast-Key and X-Placecard-Key with different keys."
+            "enum": ["key_missing", "key_invalid", "key_expired", "key_conflict", "key_ability_missing", "key_kind_refused", "test_person_required", "test_limit_reached", "test_apps_limit", "browser_not_allowed", "rate_limited", "quota_exceeded", "set_id_invalid", "idempotency_key_invalid", "body_not_json", "field_required", "field_invalid", "too_many_cards", "duplicate_card_key", "parent_not_registered", "too_many_actors", "same_player", "set_not_registered", "card_not_registered", "card_retired", "actor_signed_in", "idempotency_key_reused", "token_invalid", "token_expired", "token_other_app", "person_not_signed_in", "signin_check_unavailable"],
+            "description": "Each code with the status it comes with: key_missing 401, key_invalid 403, key_expired 403, key_conflict 400, key_ability_missing 403, key_kind_refused 403, test_person_required 403, test_limit_reached 409, test_apps_limit 429, browser_not_allowed 403, rate_limited 429, quota_exceeded 429, set_id_invalid 400, idempotency_key_invalid 400, body_not_json 400, field_required 400, field_invalid 400, too_many_cards 400, duplicate_card_key 400, parent_not_registered 400, too_many_actors 400, same_player 400, set_not_registered 404, card_not_registered 404, card_retired 409, actor_signed_in 409, idempotency_key_reused 422, token_invalid 400, token_expired 400, token_other_app 403, person_not_signed_in 403, signin_check_unavailable 503. field_required is a field left out or blank; field_invalid is one sent with the wrong type, shape, length or range. key_conflict is a call that sent X-Pincast-Key and X-Placecard-Key with different keys. key_ability_missing is a restricted key that does not name what this call needs. key_kind_refused is a kind of key that cannot make this call. test_person_required is a test key's call for a person whose id does not start test_, or one that sends a sign-in token. test_limit_reached is a test key's write that would take its test app past the test limits. test_apps_limit is POST /test-apps when Pincast has made all the test apps it makes in a day. browser_not_allowed is POST /test-apps called from a web page. quota_exceeded is a call past your app's quota of calls for the UTC day."
           },
-          "field": { "type": "string", "description": "Where the fault is: a body field's path (name, meta.checkout, cards[3].key, card.title, actor.id, to, token), the set path parameter (set), the actor query parameter (actor), or a header (X-Pincast-Key at api.pincast.fm, X-Placecard-Key at the older address, Idempotency-Key). Left out when no one field is at fault." },
+          "field": { "type": "string", "description": "Where the fault is: a body field's path (name, meta.checkout, cards[3].key, card.title, actor.id, from, to, token, testPerson), the set path parameter (set), the actor query parameter (actor), or a header (X-Pincast-Key at api.pincast.fm, X-Placecard-Key at the older address, Idempotency-Key). Left out when no one field is at fault." },
           "fix": { "type": "string", "minLength": 1, "description": "What to send instead, in one sentence." }
         }
       },
@@ -677,7 +813,7 @@
               "reason": {
                 "type": ["string", "null"],
                 "enum": ["app_not_reviewed", "app_hidden", "set_hidden", "set_off", null],
-                "description": "Null when the set lists, otherwise the first reason it does not: app_not_reviewed (Pincast has not reviewed your app yet), app_hidden or set_hidden (Pincast took your app or this set off the lists; ask us why), set_off (your own meta.listed is false). People keep the cards they hold either way, and your key keeps writing."
+                "description": "Null when the set lists, otherwise the first reason it doesn't: app_not_reviewed (Pincast hasn't reviewed your app yet; a test app always answers this, because it never lists), app_hidden or set_hidden (Pincast took your app or this set off the lists; ask us why), set_off (your own meta.listed is false). People keep the cards they hold either way, and your key keeps writing."
               }
             }
           }
@@ -688,7 +824,7 @@
         "required": ["id", "source"],
         "additionalProperties": false,
         "properties": {
-          "id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "A Logto id, or your app's guest token for this device. Trimmed before the check." },
+          "id": { "type": "string", "minLength": 1, "maxLength": 255, "description": "A Logto id, or your app's guest token for this device. Trimmed before the check. Under a test key, an id that starts test_." },
           "source": { "type": "string", "enum": ["logto", "anonymous"], "description": "logto for a signed in person, once your app has sent their sign-in token with POST /people; anonymous for a guest token, never a person's id (409 actor_signed_in for an id that holds cards in your app as a signed-in person)." }
         }
       },
@@ -773,8 +909,8 @@
         "required": ["from", "to"],
         "additionalProperties": false,
         "properties": {
-          "from": { "type": "string", "minLength": 1, "maxLength": 255, "description": "This device's guest token, as your app read it." },
-          "to": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The Logto id of the person who just signed in, once your app has sent their sign-in token with POST /people. Never the same as from." }
+          "from": { "type": "string", "minLength": 1, "maxLength": 255, "description": "This device's guest token, as your app read it. Under a test key, an id that starts test_." },
+          "to": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The Logto id of the person who just signed in, once your app has sent their sign-in token with POST /people. Never the same as from. Under a test key, an id that starts test_." }
         }
       },
       "ClaimResponse": {
@@ -791,10 +927,12 @@
       },
       "PersonRequest": {
         "type": "object",
-        "required": ["token"],
+        "description": "token under a live key, testPerson under a test key.",
+        "oneOf": [{ "required": ["token"] }, { "required": ["testPerson"] }],
         "additionalProperties": false,
         "properties": {
-          "token": { "type": "string", "minLength": 1, "maxLength": 8192, "description": "The person's ID token from id.pincast.fm, a JWT, exactly as your app received it at sign-in." }
+          "token": { "type": "string", "minLength": 1, "maxLength": 8192, "description": "The person's ID token from id.pincast.fm, a JWT, exactly as your app received it at sign-in. Refused under a test key." },
+          "testPerson": { "type": "string", "pattern": "^test_[a-z0-9_-]{1,64}$", "description": "Under a test key: the test person to answer for, such as test_demo. Nothing is stored." }
         }
       },
       "PersonResponse": {
@@ -803,8 +941,98 @@
         "additionalProperties": false,
         "properties": {
           "app": { "type": "string" },
-          "person": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The person's Logto id, the token's subject: send it as actor.id and as to." },
-          "linkedAt": { "$ref": "#/components/schemas/Time" }
+          "person": { "type": "string", "minLength": 1, "maxLength": 255, "description": "The person's Logto id, the token's subject, or under a test key the testPerson you sent: send it as actor.id and as to." },
+          "linkedAt": { "$ref": "#/components/schemas/Time" },
+          "simulated": { "const": true, "description": "Present only under a test key: nothing was stored." }
+        }
+      },
+      "TestAppRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "What POST /test-apps takes. Any other field is refused.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "description": "The app's name. Left out, it is Test app."
+          }
+        }
+      },
+      "TestAppResponse": {
+        "type": "object",
+        "required": [
+          "app",
+          "key",
+          "keyId",
+          "claim",
+          "api"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "app": {
+            "type": "object",
+            "required": [
+              "id",
+              "name",
+              "mode",
+              "expiresAt"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^test-[a-z2-7]{10}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "mode": {
+                "const": "test"
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Time"
+              }
+            }
+          },
+          "key": {
+            "type": "string",
+            "pattern": "^pck_test-[a-z2-7]{10}_rk_[A-Za-z0-9_-]{43}$",
+            "description": "The restricted test key, shown only here. Send it in X-Pincast-Key."
+          },
+          "keyId": {
+            "type": "string",
+            "pattern": "^key_[a-f0-9]{12}$"
+          },
+          "claim": {
+            "type": "object",
+            "required": [
+              "code",
+              "url",
+              "expiresAt"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string",
+                "pattern": "^pcc_[A-Za-z0-9_-]{43}$",
+                "description": "Works once, shown only here."
+              },
+              "url": {
+                "type": "string",
+                "pattern": "^https://pincast\\.fm/developers/claim#code=pcc_[A-Za-z0-9_-]{43}$",
+                "description": "Open it signed in to Pincast to keep this app."
+              },
+              "expiresAt": {
+                "$ref": "#/components/schemas/Time"
+              }
+            }
+          },
+          "api": {
+            "const": "https://api.pincast.fm/v1"
+          }
         }
       },
       "AppsResponse": {

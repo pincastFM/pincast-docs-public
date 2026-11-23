@@ -235,7 +235,7 @@ The whole call is one transaction. A call that fails writes nothing and keeps no
 
 ## When the call is refused
 
-Placecard checks the call in order: the key, your key's limit, the set id, the `Idempotency-Key`, then the body. In the body it checks `name`, then `meta`, then `cards`, then each card in turn, then duplicate keys and parents, and answers with the first fault. One bad card fails the whole call.
+Placecard checks the call in order: the key, your key's limit, your app's daily quota, whether this key may make this call (`sets:write`), the set id, the `Idempotency-Key`, then the body. In the body it checks `name`, then `meta`, then `cards`, then each card in turn, then duplicate keys and parents, and answers with the first fault. One bad card fails the whole call.
 
 For a card, the message starts with the card's place in the array, and `data.field` gives the path. A second card sent without a title answers 400 with the message `cards[1]: title required` and this `data`:
 
@@ -261,4 +261,4 @@ The codes this call can answer with:
 | `parent_not_registered` | 400 | A card's parent is neither in the call nor registered in the set. `data.field` names the first such card, and the message lists up to five of the missing keys. |
 | `idempotency_key_reused` | 422 | Your app used this `Idempotency-Key` in the last 24 hours for a different request. |
 
-The key and the limit answer as they do on every call: `key_missing` (401), `key_invalid` and `key_expired` (403), `key_conflict` (400) and `rate_limited` (429, with `Retry-After`). A 500 is a failure on Placecard's side, and the same call is safe to send again. [Errors](/api-reference/errors) has the full error body and every code.
+The key, the limits and the abilities answer as they do on every call: `key_missing` (401), `key_invalid`, `key_expired`, `key_ability_missing` and `key_kind_refused` (403), `key_conflict` (400), and `rate_limited` and `quota_exceeded` (429, with `Retry-After`). A 500 is a failure on Placecard's side, and the same call is safe to send again. [Errors](/api-reference/errors) has the full error body and every code.
