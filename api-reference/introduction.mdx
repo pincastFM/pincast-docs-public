@@ -16,7 +16,7 @@ curl https://api.pincast.fm/v1/sets/central-park-trees \
 
 A key reads `pck_`, your app id, `_`, then a secret of 20 or more characters, each a letter, a digit, `_` or `-`. Keep it on your server: never in a web page, an app bundle or a query string. Placecard stores only its sha256.
 
-Pincast issues keys by hand. To ask for one, write to [andrew@pincast.fm](mailto:andrew@pincast.fm).
+Pincast issues keys by hand. To ask for one, write to [support@pincast.fm](mailto:support@pincast.fm).
 
 Your app can hold two live keys at once, so a key is replaced with no outage: the new key works at once, and the old one keeps working until its expiry, seven days after the new key is made unless you ask for less. A revoked key is refused from the next call.
 

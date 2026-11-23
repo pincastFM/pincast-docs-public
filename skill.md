@@ -11,7 +11,7 @@ Placecard is Pincast's card registry. An app registers its card sets and cards, 
 
 1. Call `https://api.pincast.fm/v1` from the server only. Send the app key in the `X-Pincast-Key` header.
 2. Read the key from the environment (`PINCAST_KEY`). It reads `pck_`, the app id, `_`, then a secret. Never put it in browser code, an app bundle, a query string, a log or the repository.
-3. Every key is live, and every write is real. There's no test mode, no test key, no API SDK and no webhooks. Pincast issues keys by hand, at andrew@pincast.fm. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table.
+3. Every key is live, and every write is real. There's no test mode, no test key, no API SDK and no webhooks. Pincast issues keys by hand, at support@pincast.fm. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table.
 4. The API has seven calls today: six take the app key, and one, the list of apps, is public. Check the reference before calling any other path: https://docs.pincast.fm/api-reference/introduction.
 5. No call deletes anything. Retire a card by sending it with `"status": "retired"`; the people who hold it keep it.
 
