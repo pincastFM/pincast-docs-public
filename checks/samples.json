@@ -312,7 +312,7 @@
     { "page": "quickstart.mdx", "n": 7, "first": "set -a; . ./.env; set +a", "mark": "runs" },
     { "page": "quickstart.mdx", "n": 8, "first": "set -a; . ./.env; set +a", "mark": "skipped", "reason": "Starts a dev server, which doesn't exit" },
     { "page": "quickstart.mdx", "n": 9, "first": "UPDATE_GOLDENS=1 npm test", "mark": "runs", "seconds": 300 },
-    { "page": "quickstart.mdx", "n": 10, "first": "set -a; . ./.env; set +a", "mark": "runs" },
+    { "page": "quickstart.mdx", "n": 10, "first": "set -a; . ./.env; set +a", "mark": "skipped", "reason": "Sends a guest id with a live key. A test key writes only for test people, so test mode answers 403 test_person_required. Blocks 6 and 7 send the same set and a test collect with the test key", "syntax": true },
     { "page": "skill.md", "n": 0, "first": "curl -X PUT https://api.pincast.fm/v1/sets/central-park-tree", "mark": "runs" },
     { "page": "skill.md", "n": 1, "first": "curl -X POST https://api.pincast.fm/v1/sets/central-park-tre", "mark": "runs" }
   ]
