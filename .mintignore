@@ -1,0 +1,7 @@
+# Files for the people who edit these docs, not pages: keep them off the site.
+AGENTS.md
+scripts/
+package.json
+package-lock.json
+checks/
+.github/

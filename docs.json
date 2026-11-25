@@ -63,6 +63,8 @@
           "guides/sets-and-cards",
           "guides/card-table",
           "guides/directory-and-placecard",
+          "guides/typed-package",
+          "guides/pincast-command",
           "guides/agents"
         ]
       },
@@ -80,6 +82,8 @@
         "pages": [
           "api-reference/introduction",
           "api-reference/errors",
+          "api-reference/versioning",
+          "api-reference/changelog",
           {
             "group": "Sets",
             "pages": [

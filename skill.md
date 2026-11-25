@@ -1,6 +1,6 @@
 ---
 name: pincast
-description: Call the Pincast Placecard API at api.pincast.fm/v1 from a server, to register card sets and cards, record that a person collected a card, read what a person holds, link a person who signed in through id.pincast.fm, and move a guest's cards to them. Use when code calls api.pincast.fm, sends an X-Pincast-Key header, or adds card collecting to an app built on Pincast.
+description: Call the Pincast Placecard API at api.pincast.fm/v1 from a server, to register card sets and cards, record that a person collected a card, read what a person holds, link a person who signed in through id.pincast.fm, and move a guest's cards to them. Covers the typed package @pincast/api and the pincast command (@pincast/cli). Use when code calls api.pincast.fm, imports @pincast/api, runs pincast or npx @pincast/cli, sends an X-Pincast-Key header, or adds card collecting to an app built on Pincast.
 ---
 
 # Pincast Placecard API
@@ -11,10 +11,17 @@ Placecard is Pincast's card registry. An app registers its card sets and cards, 
 
 1. Call `https://api.pincast.fm/v1` from the server only. Send the app key in the `X-Pincast-Key` header.
 2. Read the key from the environment (`PINCAST_KEY`). It reads `pck_`, the app id, `_`, then a secret. Never put it in browser code, an app bundle, a query string, a log or the repository.
-3. A key is a test key or a live key. A test key reaches only its own test app and writes only for test people, whose ids start `test_`, such as `test_demo`. A live key writes real data. There's no API SDK and no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table.
-4. To get a test key, run `npm create pincast`, call `POST /test-apps`, or make one on the dashboard at https://pincast.fm/developers/dashboard. A live key comes from taking the app live on the dashboard. Steps: https://docs.pincast.fm/quickstart.
+3. A key is a test key or a live key. A test key reaches only its own test app and writes only for test people, whose ids start `test_`, such as `test_demo`. A live key writes real data. There are no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table.
+4. To get a test key, run `npx @pincast/cli init my-app` or `npm create pincast`, call `POST /test-apps`, or make one on the dashboard at https://pincast.fm/developers/dashboard. Both commands save the key in `.env` as `PINCAST_KEY` and never print it. A live key comes from taking the app live on the dashboard. Steps: https://docs.pincast.fm/quickstart.
 5. The API has eight calls: six take the app key, the list of apps is public, and `POST /test-apps` needs no key or account. Check the reference before calling any other path: https://docs.pincast.fm/api-reference/introduction.
 6. No API call deletes anything. Retire a card by sending it with `"status": "retired"`; the people who hold it keep it.
+
+## Two tools, by where the code runs
+
+1. On the developer's machine or in CI: the `pincast` command, `npx @pincast/cli`. `init` makes a test app with no account. `sets put`, `sets get`, `collect` and `collects` send and read data with the key in `.env`. It never prints a key and never prompts, and with its JSON option it prints one JSON object. Guide: https://docs.pincast.fm/guides/pincast-command.
+2. In the app's server code: the typed package, `@pincast/api`. One method for each call, the key in `X-Pincast-Key`, an `Idempotency-Key` on each write, a 429 or 503 waited out, and every failure a `PincastError` with `code`, `field` and `fix`. It refuses any key in a web page. Guide: https://docs.pincast.fm/guides/typed-package.
+
+A live key goes only in the command or the package, on a machine you control.
 
 ## The eight calls
 

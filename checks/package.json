@@ -1,0 +1,12 @@
+{
+  "name": "pincast-docs-checks",
+  "private": true,
+  "description": "The docs checks the workflow runs: the AFDocs score and the code samples.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "afdocs": "0.23.0"
+  }
+}

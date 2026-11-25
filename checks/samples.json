@@ -1,0 +1,319 @@
+{
+  "about": "One marker per fenced block in a published page. See \"Code samples\" in AGENTS.md.",
+  "budget": {
+    "maxCallsPerRun": 60,
+    "testAppCallsPerDay": 2000
+  },
+  "order": [
+    "guides/sets-and-cards.mdx",
+    "skill.md",
+    "guides/typed-package.mdx",
+    "api-reference/introduction.mdx",
+    "api-reference/errors.mdx",
+    "guides/directory-and-placecard.mdx",
+    "quickstart.mdx",
+    "guides/pincast-command.mdx",
+    "guides/signed-in-collect.mdx",
+    "guides/card-table.mdx"
+  ],
+  "pages": {
+    "guides/typed-package.mdx": {
+      "prelude": true
+    },
+    "quickstart.mdx": {
+      "workspace": "template"
+    },
+    "guides/pincast-command.mdx": {
+      "workspace": "template"
+    },
+    "guides/card-table.mdx": {
+      "workspace": "template-deps"
+    }
+  },
+  "blocks": [
+    { "page": "api-reference/errors.mdx", "n": 0, "first": "curl https://api.pincast.fm/v1/sets/central-park-trees", "mark": "runs", "expect": 401 },
+    {
+      "page": "api-reference/errors.mdx",
+      "n": 1,
+      "first": "{",
+      "mark": "response",
+      "schema": "Error"
+    },
+    { "page": "api-reference/introduction.mdx", "n": 0, "first": "curl https://api.pincast.fm/v1/sets/central-park-trees \\", "mark": "runs" },
+    { "page": "guides/agents.mdx", "n": 0, "first": "## Pincast Placecard API", "mark": "skipped", "reason": "An AGENTS.md section for the reader's own repository: rules in prose, nothing to run" },
+    { "page": "guides/card-table.mdx", "n": 0, "first": "npm init -y", "mark": "skipped", "reason": "The folder holds create-pincast's template packages, which include these: the kit 1.6.0, vue 3, vite 5 and @vitejs/plugin-vue 5", "syntax": true },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 1,
+      "first": "{",
+      "mark": "runs",
+      "schema": "PutSetRequest"
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 2,
+      "first": "import { readFileSync } from 'node:fs'",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 3,
+      "first": "export const config = {",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 4,
+      "first": "import { createApp, h } from 'vue'",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 5,
+      "first": "body {",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 6,
+      "first": "import { existsSync } from 'node:fs'",
+      "mark": "runs"
+    },
+    { "page": "guides/card-table.mdx", "n": 7, "first": "<!doctype html>", "mark": "runs" },
+    { "page": "guides/card-table.mdx", "n": 8, "first": "node_modules", "mark": "skipped", "reason": "The contents of .gitignore: nothing to run" },
+    { "page": "guides/card-table.mdx", "n": 9, "first": "npx vite", "mark": "skipped", "reason": "Starts a dev server, which doesn't exit. Block 13 builds the same files" },
+    { "page": "guides/card-table.mdx", "n": 10, "first": "PINCAST_KEY=pck_your-app_your-secret", "mark": "skipped", "reason": "Placeholder values: the runner writes .env with the test key in their place" },
+    { "page": "guides/card-table.mdx", "n": 11, "first": "set -a; . ./.env; set +a", "mark": "runs" },
+    { "page": "guides/card-table.mdx", "n": 12, "first": "curl -X POST \"$PINCAST_API/sets/old-town-lanterns/collects\" ", "mark": "runs" },
+    { "page": "guides/card-table.mdx", "n": 13, "first": "npx vite build", "mark": "runs", "seconds": 300 },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 14,
+      "first": "import { readFileSync, statSync } from 'node:fs'",
+      "mark": "skipped",
+      "reason": "A route for the signed-in server on the signed-in collect page. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    {
+      "page": "guides/card-table.mdx",
+      "n": 15,
+      "first": "import { tableRoute } from './server/table.js'",
+      "mark": "skipped",
+      "reason": "One line to add to that server",
+      "syntax": true
+    },
+    { "page": "guides/card-table.mdx", "n": 16, "first": "if (await tableRoute(req, res, url, sessionOf(req)?.person))", "mark": "skipped", "reason": "One line inside that server's request handler: it doesn't parse on its own" },
+    { "page": "guides/card-table.mdx", "n": 17, "first": "node server.mjs", "mark": "skipped", "reason": "Starts that server. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists" },
+    { "page": "guides/card-table.mdx", "n": 18, "first": "npm install -D vitest@2 jsdom@25 @electric-sql/pglite@0.5", "mark": "skipped", "reason": "The folder holds create-pincast's template packages, which include vitest 2, jsdom 25 and pglite 0.5", "syntax": true },
+    { "page": "guides/card-table.mdx", "n": 19, "first": "// @vitest-environment jsdom", "mark": "runs" },
+    { "page": "guides/card-table.mdx", "n": 20, "first": "UPDATE_GOLDENS=1 npx vitest run", "mark": "runs", "seconds": 300 },
+    { "page": "guides/directory-and-placecard.mdx", "n": 0, "first": "curl https://api.pincast.fm/v1/apps", "mark": "runs" },
+    {
+      "page": "guides/directory-and-placecard.mdx",
+      "n": 1,
+      "first": "{",
+      "mark": "response",
+      "schema": "AppsResponse"
+    },
+    { "page": "guides/pincast-command.mdx", "n": 0, "first": "npx @pincast/cli init my-app", "mark": "skipped", "reason": "Makes a test app through the no-account route, which the samples never call. create-pincast's and pincast-cli's own tests cover it", "syntax": true },
+    { "page": "guides/pincast-command.mdx", "n": 1, "first": "npm install -g @pincast/cli", "mark": "skipped", "reason": "A global install would change the machine: the runner installs @pincast/cli itself", "syntax": true },
+    { "page": "guides/pincast-command.mdx", "n": 2, "first": "pincast init my-app", "mark": "skipped", "reason": "Makes a test app through the no-account route, which the samples never call. create-pincast's and pincast-cli's own tests cover it", "syntax": true },
+    { "page": "guides/pincast-command.mdx", "n": 3, "first": "pincast sets put data/set.json --set old-town-lanterns", "mark": "runs" },
+    { "page": "guides/pincast-command.mdx", "n": 4, "first": "pincast sets get old-town-lanterns", "mark": "runs" },
+    { "page": "guides/pincast-command.mdx", "n": 5, "first": "pincast collect old-town-lanterns lantern:ferry-steps", "mark": "runs" },
+    { "page": "guides/pincast-command.mdx", "n": 6, "first": "pincast collects old-town-lanterns", "mark": "runs" },
+    { "page": "guides/pincast-command.mdx", "n": 7, "first": "npx @pincast/cli init my-app --json", "mark": "skipped", "reason": "Makes a test app through the no-account route, which the samples never call. create-pincast's and pincast-cli's own tests cover it", "syntax": true },
+    {
+      "page": "guides/pincast-command.mdx",
+      "n": 8,
+      "first": "{",
+      "mark": "skipped",
+      "reason": "The command's own answer, not an API answer. pincast-cli's init test checks every field"
+    },
+    { "page": "guides/sets-and-cards.mdx", "n": 0, "first": "curl -X PUT https://api.pincast.fm/v1/sets/central-park-tree", "mark": "runs" },
+    {
+      "page": "guides/sets-and-cards.mdx",
+      "n": 1,
+      "first": "{",
+      "mark": "response",
+      "schema": "PutSetResponse"
+    },
+    {
+      "page": "guides/sets-and-cards.mdx",
+      "n": 2,
+      "first": "{",
+      "mark": "response",
+      "schema": "PutSetRequest"
+    },
+    {
+      "page": "guides/sets-and-cards.mdx",
+      "n": 3,
+      "first": "{",
+      "mark": "response",
+      "schema": "PutSetResponse"
+    },
+    { "page": "guides/sets-and-cards.mdx", "n": 4, "first": "// put-set.mjs", "mark": "runs" },
+    {
+      "page": "guides/sets-and-cards.mdx",
+      "n": 5,
+      "first": "{",
+      "mark": "response",
+      "schema": "ErrorData"
+    },
+    {
+      "page": "guides/sign-in.mdx",
+      "n": 0,
+      "first": "function startSignIn(req, res) {",
+      "mark": "skipped",
+      "reason": "Part of the sign-in flow. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    {
+      "page": "guides/sign-in.mdx",
+      "n": 1,
+      "first": "async function exchangeCode(code, verifier) {",
+      "mark": "skipped",
+      "reason": "Part of the sign-in flow. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    {
+      "page": "guides/sign-in.mdx",
+      "n": 2,
+      "first": "async function finishSignIn(req, res, query) {",
+      "mark": "skipped",
+      "reason": "Part of the sign-in flow. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    {
+      "page": "guides/sign-in.mdx",
+      "n": 3,
+      "first": "{",
+      "mark": "response",
+      "schema": "PersonResponse"
+    },
+    {
+      "page": "guides/sign-in.mdx",
+      "n": 4,
+      "first": "await api('POST', `/sets/${SET_ID}/collects`, {",
+      "mark": "skipped",
+      "reason": "Part of the sign-in flow. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    { "page": "guides/signed-in-collect.mdx", "n": 0, "first": "mkdir -p lantern-walk/data", "mark": "runs", "cwd": "lantern-walk" },
+    { "page": "guides/signed-in-collect.mdx", "n": 1, "first": "PINCAST_KEY=pck_your-app_your-secret", "mark": "skipped", "reason": "Placeholder values: the runner writes .env with the test key in their place" },
+    {
+      "page": "guides/signed-in-collect.mdx",
+      "n": 2,
+      "first": "{",
+      "mark": "runs",
+      "schema": "PutSetRequest"
+    },
+    { "page": "guides/signed-in-collect.mdx", "n": 3, "first": "set -a; . ./.env; set +a", "mark": "runs" },
+    {
+      "page": "guides/signed-in-collect.mdx",
+      "n": 4,
+      "first": "{",
+      "mark": "response",
+      "schema": "PutSetResponse"
+    },
+    {
+      "page": "guides/signed-in-collect.mdx",
+      "n": 5,
+      "first": "import { createHash, randomBytes } from 'node:crypto'",
+      "mark": "skipped",
+      "reason": "A server. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists",
+      "syntax": true
+    },
+    { "page": "guides/signed-in-collect.mdx", "n": 6, "first": "node server.mjs", "mark": "skipped", "reason": "Starts that server. Needs a sign-in client id and secret from Pincast sign-in, and no test sign-in exists" },
+    { "page": "guides/typed-package.mdx", "n": 0, "first": "npm install @pincast/api", "mark": "skipped", "reason": "The runner installs @pincast/api into every folder before a page's blocks run", "syntax": true },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 1,
+      "first": "import { Pincast } from '@pincast/api'",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 2,
+      "first": "const { key, claim } = await new Pincast().postTestApp({ nam",
+      "mark": "skipped",
+      "reason": "Makes a test app through the no-account route, which the samples never call. create-pincast's and pincast-cli's own tests cover it",
+      "syntax": true
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 3,
+      "first": "await pincast.putSet('central-park-trees', {",
+      "mark": "runs"
+    },
+    { "page": "guides/typed-package.mdx", "n": 4, "first": "const set = await pincast.getSet('central-park-trees')", "mark": "runs" },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 5,
+      "first": "await pincast.postCollect('central-park-trees', {",
+      "mark": "runs"
+    },
+    { "page": "guides/typed-package.mdx", "n": 6, "first": "const held = await pincast.getCollects('central-park-trees',", "mark": "runs" },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 7,
+      "first": "await pincast.postClaim('central-park-trees', { from: 'test_",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 8,
+      "first": "const { person } = await pincast.postPerson({ testPerson: 't",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 9,
+      "first": "const { apps } = await pincast.getApps()",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 10,
+      "first": "import { PincastError } from '@pincast/api'",
+      "mark": "runs"
+    },
+    { "page": "guides/typed-package.mdx", "n": 11, "first": "const idempotencyKey = crypto.randomUUID()", "mark": "runs" },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 12,
+      "first": "import { isTestKey, isTestPerson, testActor, testPerson } fr",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 13,
+      "first": "import { startMock } from '@pincast/api/mock'",
+      "mark": "runs"
+    },
+    {
+      "page": "guides/typed-package.mdx",
+      "n": 14,
+      "first": "import { ResendQueue } from '@pincast/api/resend-queue'",
+      "mark": "runs"
+    },
+    { "page": "quickstart.mdx", "n": 0, "first": "npm create pincast my-app", "mark": "skipped", "reason": "Makes a test app through the no-account route, which the samples never call. create-pincast's and pincast-cli's own tests cover it. The runner starts from the template it copies, with the test key in .env", "syntax": true },
+    { "page": "quickstart.mdx", "n": 1, "first": "Your app is ready in my-app, with the test app test-k3f7x2m4", "mark": "skipped", "reason": "What npm create pincast prints. create-pincast's tests check it" },
+    { "page": "quickstart.mdx", "n": 2, "first": "cd my-app", "mark": "skipped", "reason": "Starts a dev server, which doesn't exit" },
+    { "page": "quickstart.mdx", "n": 3, "first": "Set old-town-lanterns isn't registered for this app yet. Sen", "mark": "skipped", "reason": "A message the app shows, not code" },
+    { "page": "quickstart.mdx", "n": 4, "first": "cd my-app", "mark": "skipped", "reason": "The same two calls as block 10, then a dev server, which doesn't exit", "syntax": true },
+    { "page": "quickstart.mdx", "n": 5, "first": "npm install @pincast/api", "mark": "skipped", "reason": "The runner installs @pincast/api into every folder before a page's blocks run", "syntax": true },
+    {
+      "page": "quickstart.mdx",
+      "n": 6,
+      "first": "import { readFileSync } from 'node:fs'",
+      "mark": "runs"
+    },
+    { "page": "quickstart.mdx", "n": 7, "first": "set -a; . ./.env; set +a", "mark": "runs" },
+    { "page": "quickstart.mdx", "n": 8, "first": "set -a; . ./.env; set +a", "mark": "skipped", "reason": "Starts a dev server, which doesn't exit" },
+    { "page": "quickstart.mdx", "n": 9, "first": "UPDATE_GOLDENS=1 npm test", "mark": "runs", "seconds": 300 },
+    { "page": "quickstart.mdx", "n": 10, "first": "set -a; . ./.env; set +a", "mark": "runs" },
+    { "page": "skill.md", "n": 0, "first": "curl -X PUT https://api.pincast.fm/v1/sets/central-park-tree", "mark": "runs" },
+    { "page": "skill.md", "n": 1, "first": "curl -X POST https://api.pincast.fm/v1/sets/central-park-tre", "mark": "runs" }
+  ]
+}

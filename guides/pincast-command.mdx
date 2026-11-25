@@ -1,0 +1,133 @@
+---
+title: "The pincast command"
+description: "Make a test app and send sets and collects from your terminal."
+---
+
+`pincast` is a command for your terminal, and it runs on Node 20.12 or later. It makes a test app with no account, and it sends and reads sets and collects with your key.
+
+Its `sets`, `collect` and `collects` commands call the API through the [typed package](/guides/typed-package), the same client your server's code can use.
+
+## Install
+
+Run it once with `npx`:
+
+```sh
+npx @pincast/cli init my-app
+```
+
+Or install it and run `pincast`:
+
+```sh
+npm install -g @pincast/cli
+```
+
+## Make a test app
+
+```sh
+pincast init my-app
+```
+
+The folder has to be new or empty, and with no name given the app goes in `pincast-app`. You don't need an account. In order, the command:
+
+1. Copies the starter app, Lantern Walk, into the folder.
+2. Asks Pincast for one test app.
+3. Saves the key in `.env`, with the test person `test_demo` and your claim link. Only your account can read that file, and git ignores it.
+4. Puts the app's id in `shared/app.js`.
+5. Sends the starter's set and one collect for `test_demo`, so the app's first screen shows a real card.
+6. Prints the claim link and the steps that start the app.
+
+You still get your app when the set or the collect doesn't go through. The command says which one is missing and prints the `curl` commands that send it, and it never makes a second test app on its own. `npm create pincast` runs this same code.
+
+The app ends after 7 days unless you claim it, by opening the claim link while signed in to Pincast. [Test and live](/concepts/test-and-live) has the rules for test apps.
+
+## Your key
+
+Every command but `init` reads the key from `PINCAST_KEY`, either in the environment or in `.env` in the folder you run it from. `--env-file <file>` names another file. When both hold a key, the one in the environment wins.
+
+No option takes the key, because a command line ends up in your shell history. The command never prints a key either: anything shaped like one shows as `[key hidden]`, in text and in JSON.
+
+To point the command at another copy of the API, use `--api <address>` or `PINCAST_API`. The address has to use https, or http on your own machine.
+
+## Sets
+
+Register a set from a JSON file, or update one:
+
+```sh
+pincast sets put data/set.json --set old-town-lanterns
+```
+
+The set's id comes from `--set`, or from an `id` in the file. To read a set back:
+
+```sh
+pincast sets get old-town-lanterns
+```
+
+## Collects
+
+Record a collect:
+
+```sh
+pincast collect old-town-lanterns lantern:ferry-steps
+```
+
+Read the cards a person holds in a set:
+
+```sh
+pincast collects old-town-lanterns
+```
+
+Both use a test person unless you name one with `--person`. That's `PINCAST_ACTOR` from `.env` when it starts with `test_`, and `test_demo` when it doesn't. A test key collects only for test people. `--source` is `anonymous` (the default) or `logto`.
+
+A live key writes real data, so `collect` refuses one unless you add `--live`. With a live key, name the person with `--person`.
+
+## JSON output
+
+Add `--json` to any command and it prints one JSON object on stdout, with nothing on stderr. It never prompts and never reads standard input, so it runs the same in a script, in CI or for a coding agent.
+
+A success reads `{ "ok": true, "command": ..., ... }`. A failure reads `{ "ok": false, "command": ..., "error": { "code", "kind", "exitCode", "message", ... } }`. When Pincast refused the call, `code` is the API's own [error code](/api-reference/errors), and `status`, `field`, `fix` and `retryAfter` come with it.
+
+For `init`:
+
+```sh
+npx @pincast/cli init my-app --json
+```
+
+```json
+{
+  "ok": true,
+  "command": "init",
+  "app": { "id": "test-k3f7x2m4qa", "mode": "test", "expiresAt": "2026-11-29T15:04:05.123Z", "endsOn": "2026-11-29" },
+  "folder": "/path/to/my-app",
+  "env": "/path/to/my-app/.env",
+  "keyIn": { "file": "/path/to/my-app/.env", "name": "PINCAST_KEY" },
+  "actor": "test_demo",
+  "claimUrl": "https://pincast.fm/developers/claim#code=pcc_...",
+  "api": "https://api.pincast.fm/v1",
+  "firstRun": { "setConfirmed": true, "collectConfirmed": true, "why": null },
+  "next": ["cd my-app", "npm ci", "npm run dev"]
+}
+```
+
+The answer never holds the key itself.
+
+- `env` and `keyIn` name the file that does. A script or an agent reads `PINCAST_KEY` from that file.
+- `claimUrl` is the link that keeps the app, and `.env` keeps a copy as `PINCAST_CLAIM_URL`.
+- `firstRun` says whether Pincast confirmed the starter's set (`setConfirmed`) and its collect (`collectConfirmed`), with `why` when it didn't.
+- `next` lists only the steps left.
+
+## Exit codes
+
+| Code | Kind | Meaning |
+| :- | :- | :- |
+| 0 | | Done |
+| 1 | `failed` | Something unexpected, or an answer the command couldn't read |
+| 2 | `usage` | A command, option or argument it doesn't know, or one that's missing |
+| 3 | `key` | No key, or Pincast refused the key |
+| 4 | `refused` | Pincast refused the call as sent. Fix what `fix` names |
+| 5 | `not_found` | The set or card isn't registered |
+| 6 | `wait` | Too many calls. Try again after `retryAfter` seconds, since the command never waits on its own |
+| 7 | `later` | No answer, or a server error. Try again later |
+| 8 | `local` | A file or folder on your machine, such as a folder that isn't empty |
+| 9 | `live` | A live key without `--live` |
+| 11 | `waiting` | The person isn't signed in yet. Send their sign-in token, then run the command again |
+| 130 | `stopped` | Stopped with Ctrl-C. If that comes during `init`'s set and collect, the app is kept |

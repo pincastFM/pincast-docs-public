@@ -1,0 +1,59 @@
+---
+title: "Changelog"
+description: "Dated changes to the API, the kit, the typed package and the command."
+---
+
+Dates are Eastern time. An addition comes in a new minor version. A change that would break your code comes only with a new major, or with a new minor while a tool is at 0.x, as [Versions](/api-reference/versioning) explains. Your code should ignore fields and values it doesn't know.
+
+## The API
+
+The calls at `https://api.pincast.fm/v1`, version 1.0.0. Before the version rule, every change below came inside 1.0.0. From the next release on, each one raises the number.
+
+### 2026-11-22
+
+- `POST /test-apps`: a test app with no account.
+- Test keys, test people and the test app limits.
+- Restricted keys, which make only the calls their abilities name.
+- A daily quota of calls for each app.
+
+### 2026-11-20
+
+`GET /apps`, the public list of apps on Pincast.
+
+### 2026-11-17
+
+The first six calls, at `https://www.pincaster.com/api/placecard/v1` with the key in `X-Placecard-Key`: register a set and its cards, read a set back, record a collect, read what a person holds, move a guest's cards to them, and link a person who signed in. With them came errors that name the field and the fix, an `Idempotency-Key` on the three writes, a limit on each key's calls a minute and a 90-day log of calls.
+
+Later that day, the address `https://api.pincast.fm/v1` and the `X-Pincast-Key` header. The older address and header keep working.
+
+## The kit
+
+`@pincast/placecard-kit`, the card table for a Vue 3 app ([guide](/guides/card-table)).
+
+### 1.6.2, 2026-11-24
+
+Buttons in the moderation parts had been taking the size, weight and font of the text around them. Report, Hide, Restore and Retry, and the buttons in the sheet and the queue, now take their own size and weight again, in the `--tt-mod-font-label` font. A tab you haven't chosen and a switch at Off take the `--tt-mod-ink-2` color, and Retry in a failure line matches the line's size. Only `css/moderation.css` changed, and the card faces are unchanged.
+
+### 1.6.1, 2026-11-24
+
+A table with one card says "1 Card" in its head, where it said "1 Cards". The word comes from `labels.card`, and an app that sets only `labels.cards` keeps its own word at one card. The card faces are as they were.
+
+### 1.6.0, 2026-11-21
+
+The first version on npm.
+
+## The typed package
+
+`@pincast/api`, a JavaScript client for the API with TypeScript types ([guide](/guides/typed-package)).
+
+### 0.1.0, 2026-11-24
+
+The first version on npm.
+
+## The command
+
+`@pincast/cli`, the `pincast` command ([guide](/guides/pincast-command)).
+
+### 0.1.0, 2026-11-25
+
+The first version on npm. create-pincast 0.2.0 came out the same day and installs `@pincast/cli` 0.1.0, so `npm create pincast` makes the starter app with the command's `init` code.

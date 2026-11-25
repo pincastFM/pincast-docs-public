@@ -46,6 +46,8 @@ To keep this app past 2026-11-29, open this link while signed in to Pincast:
 
 A test app ends after 7 days unless you claim it. If you lose the link, it's in `.env` as `PINCAST_CLAIM_URL`.
 
+`npx @pincast/cli init my-app` runs the same code through the [`pincast` command](/guides/pincast-command), which also sends sets and collects from your terminal.
+
 ## 3. Open your first card
 
 The command registered the set's eight cards and recorded that the test person `test_demo` collected Ferry Steps. Install the app and start it:
@@ -86,6 +88,30 @@ npm run dev
 You can send the `PUT` again at any time. Send this `POST` once: with no `at` in its body, each run counts as another collect.
 
 If only the collect is left, the command prints the `POST` alone with an `Idempotency-Key` line. That line makes a repeat safe for 24 hours, even if the first try reached Pincast and its answer got lost.
+
+### Or send them from Node
+
+The [typed package](/guides/typed-package), `@pincast/api`, makes the same two calls from your own code. It puts an `Idempotency-Key` on each, so a retry it makes on its own can't count twice. In the app's folder, add the package and a short script:
+
+```bash
+npm install @pincast/api
+```
+
+```js send-first.mjs
+import { readFileSync } from 'node:fs'
+import { Pincast, testActor } from '@pincast/api'
+
+const pincast = new Pincast()
+await pincast.putSet('old-town-lanterns', JSON.parse(readFileSync('data/set.json', 'utf8')))
+await pincast.postCollect('old-town-lanterns', { card: 'lantern:ferry-steps', actor: testActor('demo') })
+```
+
+Load `.env`, then run the script once. Like the `POST` above, its collect has no `at`, so each run counts as another collect.
+
+```bash
+set -a; . ./.env; set +a
+node send-first.mjs
+```
 
 ## 4. Claim your app
 
@@ -202,3 +228,4 @@ To run the starter on that key:
 - [Your first signed-in collect](/guides/signed-in-collect) signs a real person in to your live app.
 - [Show the kit's card table](/guides/card-table) explains the table the starter draws.
 - [Test and live](/concepts/test-and-live) covers how the two kinds of app stay apart.
+- [The typed package](/guides/typed-package) calls the API from your Node server, one method for each call.

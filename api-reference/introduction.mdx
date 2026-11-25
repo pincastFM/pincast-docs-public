@@ -5,6 +5,8 @@ description: "The address, your key, the order of checks, retries and limits for
 
 The Placecard registry takes eight calls. Six go from your server with your app's key. The seventh, the list of apps on Pincast, is public and needs no key. The eighth, `POST /test-apps`, needs no key or account: it makes a test app to try the others with. Each call has its own page in this section, with a request and a response to copy. They're generated from the registry's API description, an OpenAPI 3.1 file that the registry's own tests check against the code, so the pages change when the code does.
 
+The address keeps `/v1`, and inside v1 the API only adds, so code that works today keeps working. Your code should ignore fields and values it doesn't know. [Versions](/api-reference/versioning) has the rule, and the [changelog](/api-reference/changelog) has every change.
+
 ## Address and key
 
 Call `https://api.pincast.fm/v1` with your key in the `X-Pincast-Key` header:

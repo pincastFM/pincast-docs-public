@@ -1,0 +1,229 @@
+---
+title: "The typed package"
+description: "Call the Placecard API from your Node server with @pincast/api: one method for each call, with retries and errors handled."
+---
+
+`@pincast/api` is a JavaScript client for the Placecard API, with TypeScript types made from the API file. It has no dependencies and runs on Node 20.12 or later, on your server. Each of the eight calls is one method, and the client:
+
+- sends your key in the `X-Pincast-Key` header and nowhere else
+- puts an `Idempotency-Key` on each write
+- waits out a 429 or 503 that says how long to wait
+- raises one kind of error, carrying the API's code, field and fix
+
+```sh
+npm install @pincast/api
+```
+
+## Make a client
+
+```js
+import { Pincast } from '@pincast/api'
+
+const pincast = new Pincast()
+```
+
+With no `key` option, the client reads `PINCAST_KEY` from the environment. That's the name `pincast init` and `npm create pincast` give the key in `.env`, so load the file into your server's environment, or pass the key yourself with `new Pincast({ key })`. Two calls need no key: `getApps()` and `postTestApp()`.
+
+| Option | Default | What it sets |
+| :- | :- | :- |
+| `key` | `PINCAST_KEY` from the environment | Your app's key |
+| `baseUrl` | `https://api.pincast.fm/v1` | Another copy of the API, such as the mock below |
+| `timeoutMs` | `10000` | How long to wait for each answer, in milliseconds |
+| `retries` | `2` | How many times one call waits out a 429 or 503 and goes again |
+| `maxRetryWait` | `60` | The longest `Retry-After`, in seconds, the client waits out itself |
+| `fetch` | Node's own `fetch` | The `fetch` the client calls with |
+
+`pincast.keyInfo` names the key's app and kind, and says whether it's a test key. It never holds the key. Neither do the client's errors, its JSON form, or what Node prints when you inspect it.
+
+## Start with a test app
+
+A test app needs no account. `postTestApp()` makes one and answers with its key:
+
+```js
+const { key, claim } = await new Pincast().postTestApp({ name: 'Bird log' })
+```
+
+That answer is the only place the key and the claim link appear whole, so store both before you go on: the key where your server reads it, and `claim.url` for when you want to keep the app past its 7 days. Each call makes a new app, and one source can make 2 every 10 minutes, so make one and keep using it. The [`pincast` command](/guides/pincast-command) does the same from your terminal and saves both in `.env`.
+
+## The eight calls
+
+Each method is named for its operation in the [API reference](/api-reference/introduction), and each takes a last `options` argument: `signal` and `timeoutMs`, plus `idempotencyKey` on the three writes.
+
+| Method | Call |
+| :- | :- |
+| `putSet(set, body)` | `PUT /sets/{set}`: register a set and its cards, or update them |
+| `getSet(set)` | `GET /sets/{set}`: read a set back |
+| `postCollect(set, body)` | `POST /sets/{set}/collects`: record that a person collected a card |
+| `getCollects(set, { actor })` | `GET /sets/{set}/collects`: what one person holds in the set |
+| `postClaim(set, { from, to })` | `POST /sets/{set}/claims`: move a guest's cards to a person who signed in |
+| `postPerson(body)` | `POST /people`: link a person who signed in to your app |
+| `getApps()` | `GET /apps`: the public list of apps, no key needed |
+| `postTestApp(body)` | `POST /test-apps`: a test app and its key, no key or account needed |
+
+The examples use the client from [Make a client](#make-a-client) on a test key, so every person in them is a test person. `testActor` comes from `@pincast/api` too.
+
+### putSet
+
+```js
+await pincast.putSet('central-park-trees', {
+  name: 'Central Park Trees',
+  cards: [
+    { key: 'species:ginkgo', type: 'species', title: 'Ginkgo' },
+    { key: 'tree:2614648', type: 'tree', parent: 'species:ginkgo', title: 'Ginkgo on East Drive' },
+  ],
+})
+```
+
+It answers with what changed: `setCreated`, the counts in `cards` (`created`, `updated`, `unchanged`, `parentsSet`) and the active cards by type in `active`. A card left out of the call is kept. [Register a card set](/guides/sets-and-cards) has the rules for cards.
+
+### getSet
+
+```js
+const set = await pincast.getSet('central-park-trees')
+```
+
+`set` holds the name and `meta`, the active cards by type, `collects` and `players`, and `listing`, which says whether the set lists in Placecard and why not.
+
+### postCollect
+
+```js
+await pincast.postCollect('central-park-trees', {
+  card: 'tree:2614648',
+  actor: testActor('Ana'),
+  at: '2026-11-14T15:04:05Z',
+})
+```
+
+Send `at` with every collect. The client's own retries reuse one `Idempotency-Key`, so they can't count twice, but a collect sent again with a new key and no `at` counts as a new one. The answer says whether it was the person's `first` of that card, the `count`, and the `parent` held through it.
+
+### getCollects
+
+```js
+const held = await pincast.getCollects('central-park-trees', { actor: 'test_ana' })
+```
+
+`held.cards` lists each card the person holds, with its `parent`, `collectedAt`, `lastCollectedAt` and `count`. For a person seen under more than one id, pass up to three as an array.
+
+### postClaim
+
+```js
+await pincast.postClaim('central-park-trees', { from: 'test_guest', to: 'test_ana' })
+```
+
+With a live key, `from` is the guest token your app read on this device and `to` is the person `postPerson` answered. Send one claim for each set the guest collected in.
+
+### postPerson
+
+```js
+const { person } = await pincast.postPerson({ testPerson: 'test_ana' })
+```
+
+With a live key, send the person's ID token from id.pincast.fm as `{ token }`, and use the `person` it answers as `actor.id` with `source` set to `logto`. Under a test key, `testPerson` stands in for the token and nothing is stored. [Sign people in](/guides/sign-in) has the whole flow.
+
+### getApps
+
+```js
+const { apps } = await pincast.getApps()
+```
+
+The list is public, so the client sends no key with it. Each app has its `id`, `name`, `description`, `url`, `category` and `cardCount`.
+
+### postTestApp
+
+See [Start with a test app](#start-with-a-test-app) above.
+
+## Errors
+
+Every failure is a `PincastError`. When Placecard refuses a call, the error carries its answer:
+
+```js
+import { PincastError } from '@pincast/api'
+
+try {
+  await pincast.postCollect('central-park-trees', { card: 'tree:2614648' })
+} catch (error) {
+  if (error instanceof PincastError) {
+    console.log(error.status, error.code, error.field) // 400 field_required actor
+    console.log(error.fix) // what to send instead, in one sentence
+  }
+}
+```
+
+- `status`: the HTTP status, or `null` when no answer came.
+- `code`: the code to branch on. [Errors](/api-reference/errors) lists every one.
+- `field`: the field at fault, when there is one.
+- `fix`: what to do, in one sentence.
+- `retryAfter`: the seconds in `Retry-After`, when the answer sent one.
+- `kind`: what the refusal means for a call you keep and send again.
+
+`error.message` names the method, the call, the status and the code, as in `postCollect (POST /sets/{set}/collects): 400 field_required (actor): ...`. Branch on `code`, never on the message.
+
+| `kind` | When | What to do |
+| :- | :- | :- |
+| `key` | A 401, a 403 other than `person_not_signed_in`, or no key | Fix the key, then send it again |
+| `waiting` | 403 `person_not_signed_in` | Link the person with `postPerson`, then send it again |
+| `later` | No answer, a 408, a 429, a 5xx, or 404 `set_not_registered` | Send it again later |
+| `refused` | Any other 4xx | Change the call. As sent, it won't go through |
+
+## Retries
+
+The client puts a new `Idempotency-Key` on each `putSet`, `postCollect` and `postClaim`. Placecard keeps the first answer to a key for 24 hours, so a call that arrives twice runs once. To send a call again later yourself, make the key once, keep it with the call, and pass it each time:
+
+```js
+const idempotencyKey = crypto.randomUUID()
+await pincast.postClaim('central-park-trees', { from: 'test_guest', to: 'test_ana' }, { idempotencyKey })
+```
+
+The same key with a different body is refused with 422 `idempotency_key_reused`.
+
+A 429 or 503 that sends `Retry-After` is waited out and sent again with the same `Idempotency-Key`. That covers `rate_limited`, your key's calls a minute, and `quota_exceeded`, your app's calls a UTC day. The client waits up to `maxRetryWait` seconds at a time and goes again up to `retries` times. A longer wait, or an answer with no `Retry-After`, raises the error at once, so your code decides when to send it.
+
+## Test people
+
+A test key writes only for test people, whose ids start `test_`. They need no sign-in. Four helpers make and check them:
+
+```js
+import { isTestKey, isTestPerson, testActor, testPerson } from '@pincast/api'
+
+testPerson('Ana Lee') // 'test_ana-lee'
+testActor('Ana') // { id: 'test_ana', source: 'anonymous' }
+isTestPerson('test_demo') // true
+isTestKey(process.env.PINCAST_KEY) // true for a key from a test app
+```
+
+`testPerson()` with no name makes a new random id, such as `test_k3f7x2m4qa`.
+
+## Keys stay on your server
+
+The client sends the key only in the `X-Pincast-Key` header, and only on the calls that take one. It never puts the key in an address, an error or a log line.
+
+In a web page, where `window` and `document` exist, `new Pincast()` refuses every key, secret or restricted: it throws a `PincastError` with the code `browser_not_allowed` before any call goes out, because anyone who opens the page could read the key. Call Pincast from your server and keep the key there. With no key, the client still runs in a page for the public list of apps, `getApps()`.
+
+## Test without Pincast
+
+`@pincast/api/mock` starts a local copy of the API, built from the API file. It runs the file's checks, answers with the file's examples and records each request:
+
+```js
+import { startMock } from '@pincast/api/mock'
+
+const mock = await startMock()
+const local = new Pincast({ key: process.env.PINCAST_KEY, baseUrl: mock.url })
+await local.getSet('central-park-trees') // the API file's example answer
+mock.answerNext({ status: 429, code: 'rate_limited', fix: 'Wait.', headers: { 'Retry-After': '1' } })
+await mock.close()
+```
+
+`mock.requests` holds what each call sent, and `mock.answerNext()` sets the next answers, as above. With no `key`, the mock takes any key; `startMock({ key })` answers 403 `key_invalid` to every other one.
+
+## The resend queue
+
+A visit should never wait on Placecard, and no collect should be lost when Placecard is busy. The optional queue keeps each collect before it sends it. After each send it tries up to 20 that didn't go out, newest first, and stops at the first failure that isn't that collect's own:
+
+```js
+import { ResendQueue } from '@pincast/api/resend-queue'
+
+const queue = new ResendQueue(pincast)
+await queue.collect('central-park-trees', { card: 'tree:2614648', actor: testActor('Ana') })
+```
+
+Each kept collect keeps its own `Idempotency-Key`, so a resend never counts twice. After `postPerson` links a person, `queue.release(person)` sends the collects that waited for them. The queue keeps collects in memory by default. For a server that restarts, give it a store on your database with the five methods of `MemoryStore`.

@@ -1,0 +1,103 @@
+# The docs checks: the AFDocs score and the code samples. They run after each publish (Mintlify
+# posts a deployment status when docs.pincast.fm has built a push to main), once a day, and by hand.
+# They run in the public mirror only, where the PINCAST_TEST_KEY secret lives.
+name: Docs checks
+
+on:
+  deployment_status:
+  schedule:
+    - cron: '23 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-checks
+  cancel-in-progress: false
+
+jobs:
+  wait:
+    name: Wait for the publish
+    if: >-
+      github.repository == 'pincastFM/pincast-docs-public' &&
+      (github.event_name != 'deployment_status' ||
+       (github.event.deployment_status.state == 'success' &&
+        github.event.deployment.ref == 'main' &&
+        github.event.deployment_status.creator.login == 'mintlify[bot]'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Wait until docs.pincast.fm serves this commit
+        if: github.event_name == 'deployment_status'
+        run: node checks/wait-for-publish.mjs
+
+  score:
+    name: Docs score (AFDocs)
+    needs: wait
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install AFDocs
+        run: npm ci --prefix checks --no-audit --no-fund
+      - name: Score docs.pincast.fm and compare with the baseline
+        # One page that fails to load costs a point, so a scan that comes out worse runs once more,
+        # a minute later, and the second scan decides.
+        run: |
+          scan() {
+            checks/node_modules/.bin/afdocs check https://docs.pincast.fm \
+              --format json --score --sampling deterministic \
+              --max-concurrency 1 --request-delay 400 --network-context ci \
+              > afdocs-result.json || true
+          }
+          scan
+          if ! node checks/afdocs-gate.mjs afdocs-result.json; then
+            echo "Worse than the baseline: scanning once more"
+            sleep 60
+            scan
+            node checks/afdocs-gate.mjs afdocs-result.json
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: afdocs-result
+          path: afdocs-result.json
+          retention-days: 30
+
+  samples:
+    name: Code samples
+    needs: wait
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Run every sample against test mode
+        env:
+          PINCAST_TEST_KEY: ${{ secrets.PINCAST_TEST_KEY }}
+          SAMPLES_REPORT: samples-result.json
+        run: node checks/run-samples.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: samples-result
+          path: samples-result.json
+          if-no-files-found: ignore
+          retention-days: 30

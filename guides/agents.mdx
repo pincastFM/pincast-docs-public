@@ -17,8 +17,13 @@ Docs: https://docs.pincast.fm. The API reference, with every call: https://docs.
 - Read the key from the environment (`PINCAST_KEY`). It reads `pck_`, the app id, `_`, then the secret.
 - Never put the key in browser code, an app bundle, a query string, a log or the repository.
 - A key is a test key or a live key. A test key reaches only its own test app and writes only for test people, whose ids start `test_`, such as `test_demo`. A live key writes real data.
-- To get a test key, run `npm create pincast`, call `POST /test-apps`, or make one on the dashboard at https://pincast.fm/developers/dashboard. A live key comes from taking the app live on the dashboard. Steps: https://docs.pincast.fm/quickstart.
-- There's no API SDK and no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table. The API has eight calls: six take the app key, `GET /apps` is public, and `POST /test-apps` needs no key or account. Check the reference before calling any other path.
+- To get a test key, run `npx @pincast/cli init my-app` or `npm create pincast`, call `POST /test-apps`, or make one on the dashboard at https://pincast.fm/developers/dashboard. Both commands save the key in `.env` as `PINCAST_KEY` and never print it. A live key comes from taking the app live on the dashboard. Steps: https://docs.pincast.fm/quickstart.
+- There are no webhooks. The card table is a public npm package, `@pincast/placecard-kit`, and it draws what your server fetched: https://docs.pincast.fm/guides/card-table. The API has eight calls: six take the app key, `GET /apps` is public, and `POST /test-apps` needs no key or account. Check the reference before calling any other path.
+
+### Two tools, by where the code runs
+- On the developer's machine or in CI: the `pincast` command, `npx @pincast/cli`. `init` makes a test app with no account. `sets put`, `sets get`, `collect` and `collects` send and read data with the key in `.env`. It never prints a key and never prompts, and with its JSON option it prints one JSON object. Guide: https://docs.pincast.fm/guides/pincast-command.
+- In the app's server code: the typed package, `@pincast/api`. One method for each call, the key in `X-Pincast-Key`, an `Idempotency-Key` on each write, a 429 or 503 waited out, and every failure a `PincastError` with `code`, `field` and `fix`. It refuses any key in a web page. Guide: https://docs.pincast.fm/guides/typed-package.
+- A live key goes only in the command or the package, on a machine you control.
 
 ### The eight calls
 - `PUT /sets/{set}`: register a set and its cards, or update them. A card left out is kept.

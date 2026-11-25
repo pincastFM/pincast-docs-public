@@ -1,0 +1,50 @@
+---
+title: "Versions"
+description: "What can change inside v1, what counts as a break, and how the version number moves."
+---
+
+The address keeps `/v1`, and inside v1 the API only adds, so code that works today keeps working.
+
+## What can come inside v1
+
+Each of these can arrive at any time, with a dated entry in the [changelog](/api-reference/changelog):
+
+- A new call.
+- A new optional field in a request.
+- A new field in an answer.
+- A new error code.
+- A new value in a field your code reads.
+
+Your code should ignore fields and values it doesn't know. Then none of these can break it.
+
+## What counts as a break
+
+1. Removing a call, a field or an answer header.
+2. Making a request field required.
+3. Taking away a value a request field accepts, or tightening one of its limits.
+4. Changing a field's type.
+
+None of these happen inside v1. A break comes with a new address, `/v2`, and `/v1` keeps working for at least 12 months after a dated notice in the changelog.
+
+## The version number
+
+The API file's `info.version` follows semver. It's 1.0.0 today.
+
+| Change | New number |
+| :- | :- |
+| Wording only | The patch: 1.0.1 |
+| An addition | The minor: 1.1.0 |
+| A break | The major, only with `/v2` |
+
+The registry's tests hold every change to this rule. They compare the API file with the copy from its last release, and fail on a break or on a number that doesn't match the change.
+
+## The kit, the typed package and the command
+
+Each has its own version number.
+
+- The kit is at 1.6 and follows the API's rule. Inside one major version, changes only add, and a change that would break your code raises the major.
+- The typed package and the command start at 0.1.0. While a tool is at 0.x, a change that would break your code raises the minor, from 0.1 to 0.2, with a dated entry in the changelog that says what to change. npm saves the typed package as `^0.1.0`, a range that doesn't take 0.2.0, so your app stays on 0.1 until you move it. `npx @pincast/cli` runs the newest command, so a script that needs 0.1 names it: `npx @pincast/cli@0.1`. From 1.0.0 on, each follows the kit's rule.
+
+## Later
+
+Dated versions, picked for each call in a `Pincast-Version` header, are a goal for later. No date is set.
