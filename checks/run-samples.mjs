@@ -142,10 +142,16 @@ function template() {
   if (templateBase) return templateBase
   let src = process.env.SAMPLES_TEMPLATE
   if (!src) {
-    const r = must(run('npm', ['pack', 'create-pincast@latest', '--pack-destination', WORK, '--json'], { cwd: WORK }), 'npm pack create-pincast')
+    // From 0.2.0 on, create-pincast holds only the command's name and the starter ships inside the
+    // @pincast/cli version it pins. 0.1.0 pinned no @pincast/cli and carried its own template.
+    const v = must(run('npm', ['view', 'create-pincast@latest', 'version', 'dependencies', '--json'], { cwd: WORK }), 'npm view create-pincast')
+    const info = JSON.parse(v.stdout)
+    const cli = info.dependencies?.['@pincast/cli']
+    const spec = cli ? `@pincast/cli@${cli}` : `create-pincast@${info.version}`
+    const r = must(run('npm', ['pack', spec, '--pack-destination', WORK, '--json'], { cwd: WORK }), `npm pack ${spec}`)
     const packed = JSON.parse(r.stdout)[0]
-    console.log(`create-pincast ${packed.version}`)
-    must(run('tar', ['-xzf', join(WORK, packed.filename), '-C', WORK]), 'unpacking create-pincast')
+    console.log(`create-pincast ${info.version}, template from ${packed.name} ${packed.version}`)
+    must(run('tar', ['-xzf', join(WORK, packed.filename), '-C', WORK]), `unpacking ${packed.name}`)
     src = join(WORK, 'package', 'template')
   }
   const base = join(WORK, 'template')
