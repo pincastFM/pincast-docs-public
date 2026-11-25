@@ -20,6 +20,8 @@ for (const page of pages) {
     .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
     .map((l) => l.slice(1))
     .filter((l) => !/^\s*(```|<|\||import |export |---|[a-z]+:)/.test(l))
+    // The Markdown copy writes "- item" as "* item", so a list marker never takes part in the match.
+    .map((l) => l.replace(/^\s*(?:[-+*]|\d+\.)\s+/, ''))
     .map(plain)
     .filter((l) => l.length >= 30)
   for (const line of added) if (!pick || line.length > pick.line.length) pick = { page, line }
